@@ -4,6 +4,9 @@ import time
 from threading import Lock
 
 class ProxySwitcher:
+	"""Proxy rotation system with auto-fetching, testing, and persistence"""
+	
+	# Collection of realistic user agents for stealth browsing
 	USER_AGENTS = [
 		# Chrome, Firefox, Edge, Safari, mobile, etc.
 		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
@@ -13,7 +16,13 @@ class ProxySwitcher:
 		"Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15A372 Safari/604.1",
 		"Mozilla/5.0 (Linux; Android 10; SM-G975F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.90 Mobile Safari/537.36"
 	]
-	def get_random_user_agent(self):
+	
+	def get_random_user_agent(self) -> str:
+		"""
+		Get a random user agent string for HTTP requests
+		Returns:
+			Random user agent string from the predefined list
+		"""
 		return random.choice(self.USER_AGENTS)
 	FREE_PROXY_SOURCES = [
 		"https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
@@ -27,22 +36,33 @@ class ProxySwitcher:
 		"https://www.proxy-list.download/api/v1/get?type=http"
 	]
 
-	def __init__(self, proxies=None, auto_refresh=True, refresh_interval=1800, storage_path="storage/proxy_storage.json", test_url="https://httpbin.org/ip", shortlist_size=100, test_limit=1000):
+	def __init__(self, proxies: list = None, auto_refresh: bool = True, refresh_interval: int = 1800, 
+				 storage_path: str = "storage/proxy_storage.json", test_url: str = "https://httpbin.org/ip", 
+				 shortlist_size: int = 100, test_limit: int = 1000):
 		"""
-		proxies: list of proxy URLs, e.g. ["http://ip1:port", "http://ip2:port"]
-		auto_refresh: whether to periodically refresh proxies from free sources
-		refresh_interval: seconds between refreshes
+		Initialize ProxySwitcher with configuration options
+		Args:
+			proxies: Optional list of proxy URLs, e.g. ["http://ip1:port", "http://ip2:port"]
+			auto_refresh: Whether to periodically refresh proxies from free sources
+			refresh_interval: Seconds between automatic proxy list refreshes
+			storage_path: Path to JSON file for storing last successful proxy
+			test_url: URL used for testing proxy connectivity
+			shortlist_size: Number of working proxies to keep (deprecated)
+			test_limit: Maximum number of proxies to test (deprecated)
 		"""
-		self.lock = Lock()
-		self.proxies = proxies or []
-		self.last_refresh = 0
+		self.lock = Lock()  # Thread safety for concurrent access
+		self.proxies = proxies or []  # Start with provided proxies or empty list
+		self.last_refresh = 0  # Timestamp of last proxy refresh
 		self.refresh_interval = refresh_interval
 		self.auto_refresh = auto_refresh
 		self.storage_path = storage_path
+		# Load previously successful proxy from persistent storage
 		self.last_successful_proxy = self._load_last_successful_proxy()
 		self.test_url = test_url
 		self.shortlist_size = shortlist_size
 		self.test_limit = test_limit
+		
+		# Auto-fetch proxy lists from free sources if enabled
 		if auto_refresh:
 			self.refresh_proxies()
 		print(f"Fetched {len(self.proxies)} proxies from sources.")
@@ -90,7 +110,12 @@ class ProxySwitcher:
 			working.sort(key=lambda x: x[1])
 			self.proxies = [p for p, _ in working[:self.shortlist_size]]
 			print(f"Shortlisted {len(self.proxies)} working proxies.")
-	def _load_last_successful_proxy(self):
+	def _load_last_successful_proxy(self) -> str:
+		"""
+		Load the last successful proxy from persistent storage
+		Returns:
+			Last successful proxy URL string, or None if not found
+		"""
 		import os, json
 		if os.path.exists(self.storage_path):
 			try:
@@ -101,9 +126,18 @@ class ProxySwitcher:
 				return None
 		return None
 
-	def _save_last_successful_proxy(self, proxy):
+	def _save_last_successful_proxy(self, proxy: str) -> None:
+		"""
+		Save the successful proxy to persistent storage for future use
+		Args:
+			proxy: Proxy URL string that worked successfully
+		"""
 		import json
 		try:
+			# Ensure storage directory exists
+			import os
+			os.makedirs(os.path.dirname(self.storage_path), exist_ok=True)
+			
 			with open(self.storage_path, "w") as f:
 				json.dump({"last_successful_proxy": proxy}, f)
 		except Exception as e:
