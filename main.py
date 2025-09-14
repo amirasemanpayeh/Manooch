@@ -1,7 +1,8 @@
 def main():
 
     from logic.reddit_scrapper import RedditScrapper
-    scrapper = RedditScrapper()
+    # Use ProxySwitcher with auto-refreshing free proxies
+    scrapper = RedditScrapper(proxies=None)
     all_results = scrapper.scrape()
     for subreddit, posts in all_results.items():
         print(f"Subreddit: {subreddit}")

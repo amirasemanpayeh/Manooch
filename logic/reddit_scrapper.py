@@ -1,8 +1,9 @@
 class RedditScrapper:
     subs_to_scrape = ['CasualUK']
 
-    def __init__(self):
-        pass
+    def __init__(self, proxies=None):
+        from logic.proxy_switcher import ProxySwitcher
+        self.proxy_switcher = ProxySwitcher(proxies)
 
     def scrape(self):
         all_results = {}
@@ -13,12 +14,42 @@ class RedditScrapper:
 
     def _get_page_content_json(self, url):
         import requests
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'}
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            return None
+        import time
+        tried_proxies = set()
+        prefer_last_successful = True
+        
+        # Keep trying until we find a working proxy
+        while len(tried_proxies) < len(self.proxy_switcher.proxies):
+            try:
+                user_agent = self.proxy_switcher.get_random_user_agent()
+                headers = {'User-Agent': user_agent}
+                proxies = self.proxy_switcher.get_requests_proxy_dict(prefer_last_successful=prefer_last_successful)
+                proxy_addr = proxies['http']
+                
+                # Skip if we already tried this proxy
+                if proxy_addr in tried_proxies:
+                    prefer_last_successful = False
+                    continue
+                    
+                tried_proxies.add(proxy_addr)
+                print(f"Trying proxy: {proxy_addr}")
+                
+                response = requests.get(url, headers=headers, proxies=proxies, timeout=15)
+                if response.status_code == 200:
+                    print(f"Success with proxy: {proxy_addr}")
+                    self.proxy_switcher.mark_proxy_successful(proxy_addr)
+                    return response.json()
+                else:
+                    print(f"Proxy {proxy_addr} failed with status {response.status_code}")
+                    
+            except Exception as e:
+                print(f"Proxy {proxy_addr} error: {e}")
+                
+            prefer_last_successful = False
+            time.sleep(1)
+            
+        print("All available proxies failed.")
+        return None
 
 
     def _get_posts_in_subreddit(self, json_data: dict):
