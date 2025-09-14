@@ -1,6 +1,6 @@
 class RedditScrapper:
     """Reddit scraper with proxy rotation and comprehensive post/comment extraction"""
-    subs_to_scrape = ['CasualUK']
+    subs_to_scrape = ['nosleep', 'Glitch_in_the_Matrix', 'TwoHotTakes']
 
     def __init__(self, proxies: list = None):
         """
@@ -20,7 +20,7 @@ class RedditScrapper:
         all_results = {}
         # Iterate through each subreddit in our target list
         for sub in self.subs_to_scrape:
-            results = self._scrape_subreddit(sub, sortBy="top", limit=10)
+            results = self._scrape_subreddit(sub, sortBy="top", limit=20)
             all_results[sub] = results
         return all_results
 
