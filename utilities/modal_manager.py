@@ -432,7 +432,9 @@ class ModalManager:
 
     def _submit_video_job(self, workflow_type: str, prompt: str, width: int, height: int, 
                          frames: int, fps: int, image_url: Optional[str] = None,
-                         first_frame_url: Optional[str] = None, last_frame_url: Optional[str] = None) -> Optional[str]:
+                         first_frame_url: Optional[str] = None, last_frame_url: Optional[str] = None,
+                         audio_url: Optional[str] = None, audio1_url: Optional[str] = None, 
+                         audio2_url: Optional[str] = None) -> Optional[str]:
         """Submit a video generation job and return job ID"""
         
         print(f"🚀 Submitting {workflow_type.upper()} video generation job...")
@@ -463,6 +465,25 @@ class ModalManager:
             video_params["last_frame_url"] = last_frame_url
             print(f"📸 First Frame: {first_frame_url}")
             print(f"📸 Last Frame: {last_frame_url}")
+            
+        elif workflow_type.lower() == "inf_talk_single":
+            if not image_url or not audio_url:
+                raise ValueError("inf_talk_single workflow requires both image_url and audio_url")
+            video_params["image_url"] = image_url
+            video_params["audio_url"] = audio_url
+            print(f"📸 Image: {image_url}")
+            print(f"🎵 Audio: {audio_url}")
+            
+        elif workflow_type.lower() == "inf_talk_multi":
+            if not image_url or not audio1_url or not audio2_url:
+                raise ValueError("inf_talk_multi workflow requires image_url, audio1_url, and audio2_url")
+            video_params["image_url"] = image_url
+            video_params["audio1_url"] = audio1_url
+            video_params["audio2_url"] = audio2_url
+            print(f"📸 Image: {image_url}")
+            print(f"🎵 Audio 1: {audio1_url}")
+            print(f"🎵 Audio 2: {audio2_url}")
+            
         else:
             raise ValueError(f"Unsupported workflow type: {workflow_type}")
         
@@ -487,101 +508,138 @@ class ModalManager:
         
         print(f"\n🔄 Waiting for video generation to complete...")
         print(f"📋 Job ID: {job_id}")
+        print(f"⏰ Max wait time: 45 minutes, checking every 45 seconds")
         
         # Start progress monitor
         monitor = ProgressMonitor()
         monitor.start("🎬 Generating video")
         
-        max_attempts = 45  # 7.5 minutes at 10-second intervals
+        max_wait_time = 2700  # 45 minutes max wait (increased for InfiniteTalk workflows)
+        check_interval = 45   # Check every 45 seconds (less frequent to reduce load)
+        start_time = time.time()
         
         try:
-            for attempt in range(max_attempts):
+            while True:
                 try:
+                    # Check job status - new API returns video directly in response
                     status_response = self.session.post(
                         self.VIDEO_STATUS_API,
                         json={"job_id": job_id},
                         timeout=30
                     )
                     
-                    # Success case - video ready
                     if status_response.status_code == 200:
-                        content_type = status_response.headers.get('content-type', '')
+                        # Check if this is a direct video response (video bytes)
+                        content_type = status_response.headers.get('content-type', '').lower()
                         
-                        if 'application/json' in content_type:
-                            # JSON response - check status
-                            status_data = status_response.json()
-                            status = status_data.get("status")
-                            
-                            if status == "error":
-                                monitor.stop()
-                                error_msg = status_data.get("error", "Unknown error")
-                                print(f"❌ Job failed: {error_msg}")
-                                return None
-                            elif status in ["submitted", "processing"]:
-                                # Continue polling
-                                time.sleep(10)
-                                continue
-                        else:
-                            # Binary response - video completed!
+                        if 'video' in content_type or 'application/octet-stream' in content_type:
                             monitor.stop()
                             video_size = len(status_response.content)
                             print(f"🎉 Video generation completed!")
                             print(f"📏 Video size: {video_size / 1024:.1f} KB")
                             return status_response.content
-                    
-                    # Handle processing states and temporary errors
+                        
+                        # Otherwise, it's a JSON status response
+                        try:
+                            status_data = status_response.json()
+                            status = status_data.get('status', 'unknown')
+                            
+                            if status == 'error':
+                                error_msg = status_data.get('error', 'Unknown error')
+                                monitor.stop()
+                                print(f"❌ Video generation failed: {error_msg}")
+                                return None
+                            elif status in ['submitted', 'running', 'processing']:
+                                elapsed = time.time() - start_time
+                                remaining = max_wait_time - elapsed
+                                elapsed_min = elapsed / 60
+                                remaining_min = remaining / 60
+                                print(f"⏳ Video still processing... ({elapsed_min:.1f}min elapsed, {remaining_min:.1f}min remaining)")
+                                
+                                if elapsed > max_wait_time:
+                                    monitor.stop()
+                                    print(f"⏰ Timeout after {max_wait_time/60:.1f} minutes")
+                                    return None
+                                    
+                                time.sleep(check_interval)
+                            else:
+                                print(f"❓ Unknown status: {status}")
+                                time.sleep(check_interval)
+                        except:
+                            print(f"❌ Invalid JSON response from status endpoint")
+                            return None
+                            
                     elif status_response.status_code == 202:
-                        time.sleep(10)
-                        continue
-                    
+                        # Still processing - this is normal, continue waiting
+                        elapsed = time.time() - start_time
+                        remaining = max_wait_time - elapsed
+                        elapsed_min = elapsed / 60
+                        remaining_min = remaining / 60
+                        print(f"⏳ Video still processing (202)... ({elapsed_min:.1f}min elapsed, {remaining_min:.1f}min remaining)")
+                        
+                        if elapsed > max_wait_time:
+                            monitor.stop()
+                            print(f"⏰ Timeout after {max_wait_time/60:.1f} minutes")
+                            return None
+                            
+                        time.sleep(check_interval)
+                        
                     elif status_response.status_code == 500:
-                        # Check if it's a "file not found" error (timing issue)
+                        # Could be an error or still processing - check the response
                         try:
                             error_data = status_response.json()
                             error_msg = error_data.get("error", "")
                             
-                            if "Video file not found in volume" in error_msg:
-                                if attempt < 40:
-                                    time.sleep(15)
+                            if "No video files generated" in error_msg or "still processing" in error_msg.lower():
+                                # This might be a timing issue - video may still be processing
+                                elapsed = time.time() - start_time
+                                if elapsed < max_wait_time * 0.8:  # Allow 80% of max time for processing
+                                    elapsed_min = elapsed / 60
+                                    print(f"⏳ Video still processing (volume not ready) - waiting ({elapsed_min:.1f}min elapsed)...")
+                                    time.sleep(check_interval)
                                     continue
                                 else:
                                     monitor.stop()
-                                    print(f"❌ Job failed after extended wait: {error_msg}")
+                                    print(f"❌ Video generation failed after extended wait: {error_msg}")
                                     return None
                             else:
                                 monitor.stop()
-                                print(f"❌ Job failed: {error_msg}")
+                                print(f"❌ Video generation failed: {error_msg}")
                                 return None
                         except:
-                            if attempt < 40:
-                                time.sleep(15)
+                            # If we can't parse the error, treat it as a temporary issue
+                            elapsed = time.time() - start_time
+                            if elapsed < max_wait_time * 0.5:  # Allow 50% of max time for temporary errors
+                                elapsed_min = elapsed / 60
+                                print(f"⏳ Temporary error (500) - retrying ({elapsed_min:.1f}min elapsed)...")
+                                time.sleep(check_interval)
                                 continue
                             else:
                                 monitor.stop()
-                                print(f"❌ Job failed with status {status_response.status_code}")
+                                print(f"❌ Video generation failed with status 500 after extended wait")
                                 return None
-                    
+                                
                     else:
-                        if attempt < 40:
-                            time.sleep(10)
+                        print(f"❌ Unexpected status code: {status_response.status_code}")
+                        elapsed = time.time() - start_time
+                        if elapsed < max_wait_time * 0.3:  # Allow 30% of max time for unexpected errors
+                            elapsed_min = elapsed / 60
+                            print(f"⏳ Retrying in {check_interval} seconds... ({elapsed_min:.1f}min elapsed)")
+                            time.sleep(check_interval)
                             continue
                         else:
                             monitor.stop()
-                            print(f"❌ Job failed after multiple retries")
+                            print(f"❌ Video generation failed after multiple unexpected errors")
                             return None
-                            
+                    
+                except KeyboardInterrupt:
+                    monitor.stop()
+                    print(f"\n⚠️ User interrupted while waiting for video")
+                    return None
                 except Exception as e:
-                    if attempt < 40:
-                        time.sleep(10)
-                    else:
-                        monitor.stop()
-                        print(f"❌ Giving up after {max_attempts} attempts: {e}")
-                        return None
-            
-            monitor.stop()
-            print("⏰ Timeout: Video generation took longer than 7.5 minutes")
-            return None
-            
+                    print(f"❌ Exception while checking status: {e}")
+                    time.sleep(check_interval)
+                    
         except Exception as e:
             monitor.stop()
             print(f"❌ Video generation failed: {e}")
@@ -615,7 +673,7 @@ class ModalManager:
     def generate_video_from_image(self,
                                 image_url: str,
                                 prompt: str,
-                                width: int = 480,
+                                width: int = 640,
                                 height: int = 640,
                                 frames: int = 81,
                                 fps: int = 16) -> Optional[bytes]:
@@ -624,7 +682,7 @@ class ModalManager:
         Args:
             image_url: URL of the input image
             prompt: Text description of the desired video motion
-            width: Video width in pixels (default: 480)
+            width: Video width in pixels (default: 640)
             height: Video height in pixels (default: 640)
             frames: Number of frames to generate (default: 81)
             fps: Frames per second (default: 16)
@@ -691,19 +749,92 @@ class ModalManager:
         # Wait for completion and get video
         return self._wait_and_get_video(job_id)
     
-    def _submit_music_job(self, prompt: str, lyrics: str, duration: int) -> Optional[str]:
-        """Submit a music generation job and return job ID"""
+    def generate_infinite_talk_video(self,
+                                   image_url: str,
+                                   audio_files: list,
+                                   prompt: str,
+                                   width: int = 573,
+                                   height: int = 806,
+                                   frames: int = 200,
+                                   fps: int = 25) -> Optional[bytes]:
+        """Generate InfiniteTalk video with automatic workflow selection based on number of audio files
         
-        print(f"🚀 Submitting music generation job...")
+        Args:
+            image_url: URL of the input image
+            audio_files: List of audio file URLs (1 or 2 files supported)
+            prompt: Text description of the desired video
+            width: Video width in pixels (default: 573)
+            height: Video height in pixels (default: 806) 
+            frames: Number of frames to generate (default: 200)
+            fps: Frames per second (default: 25)
+            
+        Returns:
+            Video data as bytes or None if failed
+        """
+        
+        # Validate audio files count
+        if not audio_files or len(audio_files) < 1:
+            print("❌ Error: At least 1 audio file is required")
+            return None
+        
+        if len(audio_files) > 2:
+            print("❌ Error: Maximum 2 audio files supported")
+            return None
+        
+        # Determine workflow based on number of audio files
+        if len(audio_files) == 1:
+            print("🗣️ Using single-speaker InfiniteTalk workflow")
+            workflow_type = "inf_talk_single"
+            
+            # Submit the job
+            job_id = self._submit_video_job(
+                workflow_type=workflow_type,
+                prompt=prompt,
+                width=width,
+                height=height,
+                frames=frames,
+                fps=fps,
+                image_url=image_url,
+                audio_url=audio_files[0]
+            )
+            
+        elif len(audio_files) == 2:
+            print("🎤 Using multi-speaker InfiniteTalk workflow")
+            workflow_type = "inf_talk_multi"
+            
+            # Submit the job
+            job_id = self._submit_video_job(
+                workflow_type=workflow_type,
+                prompt=prompt,
+                width=width,
+                height=height,
+                frames=frames,
+                fps=fps,
+                image_url=image_url,
+                audio1_url=audio_files[0],
+                audio2_url=audio_files[1]
+            )
+        
+        if not job_id:
+            return None
+        
+        # Wait for completion and get video
+        return self._wait_and_get_video(job_id)
+    
+    def _submit_music_job(self, prompt: str, lyrics: str, duration: int) -> Optional[str]:
+        """Submit a music generation job using ACE-Step tool and return job ID"""
+        
+        print(f"🚀 Submitting ACE-Step music generation job...")
         print(f"📝 Prompt: {prompt}")
         print(f"🎤 Lyrics: {lyrics}")
         print(f"⏱️ Duration: {duration}s")
         
-        # Prepare music parameters
+        # Prepare music parameters for unified endpoint
         music_params = {
+            "tool": "ace-step",
             "prompt": prompt,
             "lyrics": lyrics,
-            "duration": duration
+            "duration": float(duration)
         }
         
         try:
@@ -712,26 +843,29 @@ class ModalManager:
             
             result = response.json()
             job_id = result["job_id"]
-            print(f"✅ Job submitted successfully!")
+            print(f"✅ ACE-Step job submitted successfully!")
             print(f"📋 Job ID: {job_id}")
             return job_id
             
         except Exception as e:
-            print(f"❌ Failed to submit job: {e}")
+            print(f"❌ Failed to submit ACE-Step job: {e}")
             return None
 
     def _wait_for_music_completion(self, job_id: str) -> Optional[bytes]:
-        """Wait for music generation completion and return audio data"""
+        """Wait for ACE-Step music generation completion and return audio data"""
         
-        print(f"\n🔄 Waiting for music generation to complete...")
+        print(f"\n🔄 Waiting for ACE-Step music generation to complete...")
         print(f"📋 Job ID: {job_id}")
         
-        max_attempts = 120  # 60 minutes at 30-second intervals (full songs take longer)
+        max_wait_time = 600  # 10 minutes max wait for music generation
+        check_interval = 10  # Check every 10 seconds
+        start_time = time.time()
+        
         monitor = ProgressMonitor()
         monitor.start("🎵 Generating music")
         
         try:
-            for attempt in range(max_attempts):
+            while True:
                 try:
                     status_response = self.session.post(
                         self.MUSIC_STATUS_API,
@@ -739,14 +873,14 @@ class ModalManager:
                         timeout=30
                     )
                     
-                    # Success case - audio ready
+                    # Success case - audio ready (200 with audio content)
                     if status_response.status_code == 200:
                         content_type = status_response.headers.get('content-type', '')
                         
                         # Check if we got an audio file back (direct download)
                         if content_type.startswith('audio/'):
                             monitor.stop()
-                            print("🎉 Music generation completed!")
+                            print("🎉 ACE-Step music generation completed!")
                             
                             audio_size = len(status_response.content)
                             print(f"📏 Audio size: {audio_size / 1024:.1f} KB")
@@ -754,86 +888,86 @@ class ModalManager:
                             return status_response.content
                         
                         elif 'application/json' in content_type:
-                            # JSON response - check status
-                            status_data = status_response.json()
-                            status = status_data.get("status")
-                            
-                            if status == "error":
-                                error_msg = status_data.get("error", "Unknown error")
-                                monitor.stop()
-                                print(f"❌ Job failed: {error_msg}")
-                                return None
-                            elif status in ["submitted", "processing"]:
-                                time.sleep(30)  # Wait 30 seconds before next check (music takes longer)
-                                continue
+                            # JSON response - might be status or error
+                            try:
+                                status_data = status_response.json()
+                                status = status_data.get("status")
+                                
+                                if status == "error":
+                                    error_msg = status_data.get("error", "Unknown error")
+                                    monitor.stop()
+                                    print(f"❌ ACE-Step job failed: {error_msg}")
+                                    return None
+                                else:
+                                    # Continue waiting
+                                    elapsed = time.time() - start_time
+                                    if elapsed > max_wait_time:
+                                        monitor.stop()
+                                        print(f"⏰ Timeout after {max_wait_time/60:.1f} minutes")
+                                        return None
+                                    time.sleep(check_interval)
+                            except:
+                                # Invalid JSON, continue waiting
+                                elapsed = time.time() - start_time
+                                if elapsed > max_wait_time:
+                                    monitor.stop()
+                                    print(f"⏰ Timeout after {max_wait_time/60:.1f} minutes")
+                                    return None
+                                time.sleep(check_interval)
                         else:
-                            # Unknown content type
-                            if attempt < 115:  # Allow more time for processing
-                                time.sleep(30)
-                                continue
-                            else:
+                            # Unknown content type, continue waiting
+                            elapsed = time.time() - start_time
+                            if elapsed > max_wait_time:
                                 monitor.stop()
                                 print(f"❌ Unknown response format")
                                 return None
+                            time.sleep(check_interval)
                     
-                    # Handle processing states (202) and temporary errors (500)
+                    # Handle processing states (202)
                     elif status_response.status_code == 202:
-                        time.sleep(30)
-                        continue
-                    
-                    elif status_response.status_code == 500:
-                        # Check if it's a "file not found" error (timing issue)
+                        # Still processing - normal state
+                        elapsed = time.time() - start_time
+                        elapsed_min = elapsed / 60
+                        remaining_min = (max_wait_time - elapsed) / 60
+                        
+                        if elapsed > max_wait_time:
+                            monitor.stop()
+                            print(f"⏰ Timeout after {max_wait_time/60:.1f} minutes")
+                            return None
+                        
                         try:
-                            error_data = status_response.json()
-                            error_msg = error_data.get("error", "")
-                            
-                            if "Audio file not found" in error_msg or "file not found in volume" in error_msg:
-                                # This is likely a timing issue - audio may still be processing
-                                if attempt < 115:  # Allow more time for processing
-                                    time.sleep(30)
-                                    continue
-                                else:
-                                    monitor.stop()
-                                    print(f"❌ Job failed after extended wait: {error_msg}")
-                                    return None
-                            else:
-                                monitor.stop()
-                                print(f"❌ Job failed: {error_msg}")
-                                return None
+                            status_data = status_response.json()
+                            status = status_data.get("status", "processing")
+                            print(f"⏳ ACE-Step status: {status} ({elapsed_min:.1f}min elapsed, {remaining_min:.1f}min remaining)")
                         except:
-                            # If we can't parse the error, treat it as a temporary issue
-                            if attempt < 115:
-                                time.sleep(30)
-                                continue
-                            else:
-                                monitor.stop()
-                                print(f"❌ Job failed with status {status_response.status_code}")
-                                return None
+                            print(f"⏳ ACE-Step processing... ({elapsed_min:.1f}min elapsed, {remaining_min:.1f}min remaining)")
+                        
+                        time.sleep(check_interval)
                     
                     else:
-                        if attempt < 115:
-                            time.sleep(30)
-                            continue
-                        else:
+                        # Other status codes - continue waiting with timeout
+                        elapsed = time.time() - start_time
+                        if elapsed > max_wait_time:
                             monitor.stop()
-                            print(f"❌ Job failed after multiple retries")
+                            print(f"❌ ACE-Step job failed after timeout")
                             return None
+                        
+                        print(f"⚠️ Unexpected status code: {status_response.status_code}, continuing...")
+                        time.sleep(check_interval)
                             
                 except Exception as e:
-                    if attempt < 115:
-                        time.sleep(30)
-                    else:
+                    elapsed = time.time() - start_time
+                    if elapsed > max_wait_time:
                         monitor.stop()
-                        print(f"❌ Giving up after {max_attempts} attempts: {e}")
+                        print(f"❌ Giving up after {max_wait_time/60:.1f} minutes: {e}")
                         return None
-            
-            monitor.stop()
-            print("⏰ Timeout: Music generation took longer than 60 minutes")
-            return None
-            
+                    
+                    print(f"⚠️ Exception during status check: {e}, retrying...")
+                    time.sleep(check_interval)
+                    
         except Exception as e:
             monitor.stop()
-            print(f"❌ Failed to wait for music completion: {e}")
+            print(f"❌ Failed to wait for ACE-Step music completion: {e}")
             return None
 
     def generate_music_with_lyrics(self,
@@ -863,6 +997,368 @@ class ModalManager:
         
         return audio_data
     
+    def _submit_audio_job(self, video_url: Optional[str], prompt: str) -> Optional[str]:
+        """Submit an MMAudio audio effects generation job and return job ID"""
+        
+        print(f"🚀 Submitting MMAudio audio effects generation job...")
+        print(f"📝 Prompt: {prompt}")
+        if video_url:
+            print(f"🎬 Video URL: {video_url}")
+        else:
+            print(f"🎵 Text-to-audio mode (no video)")
+        
+        # Prepare audio parameters for unified endpoint
+        audio_params = {
+            "tool": "mmaudio",
+            "prompt": prompt
+        }
+        
+        # Add video URL if provided
+        if video_url:
+            audio_params["video_url"] = video_url
+        
+        try:
+            response = self.session.post(self.MUSIC_SUBMIT_API, json=audio_params, timeout=30)
+            response.raise_for_status()
+            
+            result = response.json()
+            job_id = result["job_id"]
+            print(f"✅ MMAudio job submitted successfully!")
+            print(f"📋 Job ID: {job_id}")
+            return job_id
+            
+        except Exception as e:
+            print(f"❌ Failed to submit MMAudio job: {e}")
+            return None
+
+    def _wait_for_audio_completion(self, job_id: str) -> Optional[bytes]:
+        """Wait for MMAudio audio effects generation completion and return audio data"""
+        
+        print(f"\n🔄 Waiting for MMAudio audio generation to complete...")
+        print(f"📋 Job ID: {job_id}")
+        
+        max_wait_time = 300  # 5 minutes max wait for audio effects
+        check_interval = 10  # Check every 10 seconds
+        start_time = time.time()
+        
+        monitor = ProgressMonitor()
+        monitor.start("🎵 Generating audio effects")
+        
+        try:
+            while True:
+                try:
+                    status_response = self.session.post(
+                        self.MUSIC_STATUS_API,
+                        json={"job_id": job_id},
+                        timeout=30
+                    )
+                    
+                    # Success case - audio ready (200 with audio content)
+                    if status_response.status_code == 200:
+                        content_type = status_response.headers.get('content-type', '')
+                        
+                        # Check if we got an audio file back (direct download)
+                        if content_type.startswith('audio/'):
+                            monitor.stop()
+                            print("🎉 MMAudio generation completed!")
+                            
+                            audio_size = len(status_response.content)
+                            print(f"📏 Audio size: {audio_size / 1024:.1f} KB")
+                            
+                            return status_response.content
+                        
+                        elif 'application/json' in content_type:
+                            # JSON response - might be status or error
+                            try:
+                                status_data = status_response.json()
+                                status = status_data.get("status")
+                                
+                                if status == "error":
+                                    error_msg = status_data.get("error", "Unknown error")
+                                    monitor.stop()
+                                    print(f"❌ MMAudio job failed: {error_msg}")
+                                    return None
+                                else:
+                                    # Continue waiting
+                                    elapsed = time.time() - start_time
+                                    if elapsed > max_wait_time:
+                                        monitor.stop()
+                                        print(f"⏰ Timeout after {max_wait_time/60:.1f} minutes")
+                                        return None
+                                    time.sleep(check_interval)
+                            except:
+                                # Invalid JSON, continue waiting
+                                elapsed = time.time() - start_time
+                                if elapsed > max_wait_time:
+                                    monitor.stop()
+                                    print(f"⏰ Timeout after {max_wait_time/60:.1f} minutes")
+                                    return None
+                                time.sleep(check_interval)
+                        else:
+                            # Unknown content type, continue waiting
+                            elapsed = time.time() - start_time
+                            if elapsed > max_wait_time:
+                                monitor.stop()
+                                print(f"❌ Unknown response format")
+                                return None
+                            time.sleep(check_interval)
+                    
+                    # Handle processing states (202)
+                    elif status_response.status_code == 202:
+                        # Still processing - normal state
+                        elapsed = time.time() - start_time
+                        elapsed_min = elapsed / 60
+                        remaining_min = (max_wait_time - elapsed) / 60
+                        
+                        if elapsed > max_wait_time:
+                            monitor.stop()
+                            print(f"⏰ Timeout after {max_wait_time/60:.1f} minutes")
+                            return None
+                        
+                        try:
+                            status_data = status_response.json()
+                            status = status_data.get("status", "processing")
+                            print(f"⏳ MMAudio status: {status} ({elapsed_min:.1f}min elapsed, {remaining_min:.1f}min remaining)")
+                        except:
+                            print(f"⏳ MMAudio processing... ({elapsed_min:.1f}min elapsed, {remaining_min:.1f}min remaining)")
+                        
+                        time.sleep(check_interval)
+                    
+                    else:
+                        # Other status codes - continue waiting with timeout
+                        elapsed = time.time() - start_time
+                        if elapsed > max_wait_time:
+                            monitor.stop()
+                            print(f"❌ MMAudio job failed after timeout")
+                            return None
+                        
+                        print(f"⚠️ Unexpected status code: {status_response.status_code}, continuing...")
+                        time.sleep(check_interval)
+                            
+                except Exception as e:
+                    elapsed = time.time() - start_time
+                    if elapsed > max_wait_time:
+                        monitor.stop()
+                        print(f"❌ Giving up after {max_wait_time/60:.1f} minutes: {e}")
+                        return None
+                    
+                    print(f"⚠️ Exception during status check: {e}, retrying...")
+                    time.sleep(check_interval)
+                    
+        except Exception as e:
+            monitor.stop()
+            print(f"❌ Failed to wait for MMAudio completion: {e}")
+            return None
+
+    def _submit_vision_job(self, image_url: str, detail_level: str = "detailed", reformat: bool = True) -> Optional[str]:
+        """Submit a Florence2 vision analysis job and return job ID"""
+        
+        print(f"🚀 Submitting Florence2 vision analysis job...")
+        print(f"📸 Image URL: {image_url}")
+        print(f"📝 Detail level: {detail_level}")
+        print(f"🔧 Reformat: {reformat}")
+        
+        # Prepare vision parameters for unified endpoint
+        vision_params = {
+            "tool": "florence2",
+            "image_url": image_url,
+            "detail_level": detail_level,
+            "reformat": reformat
+        }
+        
+        try:
+            response = self.session.post(self.MUSIC_SUBMIT_API, json=vision_params, timeout=30)
+            response.raise_for_status()
+            
+            result = response.json()
+            job_id = result["job_id"]
+            print(f"✅ Florence2 job submitted successfully!")
+            print(f"📋 Job ID: {job_id}")
+            return job_id
+            
+        except Exception as e:
+            print(f"❌ Failed to submit Florence2 job: {e}")
+            return None
+
+    def _wait_for_vision_completion(self, job_id: str) -> Optional[Dict[str, Any]]:
+        """Wait for Florence2 vision analysis completion and return result data"""
+        
+        print(f"\n🔄 Waiting for Florence2 vision analysis to complete...")
+        print(f"📋 Job ID: {job_id}")
+        
+        max_wait_time = 120  # 2 minutes max wait for vision analysis
+        check_interval = 5   # Check every 5 seconds (vision is faster)
+        start_time = time.time()
+        
+        monitor = ProgressMonitor()
+        monitor.start("👁️ Analyzing image")
+        
+        try:
+            while True:
+                try:
+                    status_response = self.session.post(
+                        self.MUSIC_STATUS_API,
+                        json={"job_id": job_id},
+                        timeout=30
+                    )
+                    
+                    # Success case - vision analysis ready (200 with JSON content)
+                    if status_response.status_code == 200:
+                        content_type = status_response.headers.get('content-type', '')
+                        
+                        # Florence2 should return JSON response
+                        if 'application/json' in content_type:
+                            try:
+                                result_data = status_response.json()
+                                
+                                # Check if this is a completed result (has caption or result)
+                                if 'caption' in result_data or 'result' in result_data:
+                                    monitor.stop()
+                                    print("🎉 Florence2 vision analysis completed!")
+                                    
+                                    # Extract caption from different possible formats
+                                    caption = result_data.get('caption') or result_data.get('result', {}).get('caption', 'No caption found')
+                                    print(f"📝 Generated caption: {caption}")
+                                    
+                                    return result_data
+                                
+                                # Check for error status
+                                elif result_data.get("status") == "error":
+                                    error_msg = result_data.get("error", "Unknown error")
+                                    monitor.stop()
+                                    print(f"❌ Florence2 job failed: {error_msg}")
+                                    return None
+                                
+                                else:
+                                    # Continue waiting
+                                    elapsed = time.time() - start_time
+                                    if elapsed > max_wait_time:
+                                        monitor.stop()
+                                        print(f"⏰ Timeout after {max_wait_time/60:.1f} minutes")
+                                        return None
+                                    time.sleep(check_interval)
+                                    
+                            except Exception as json_error:
+                                print(f"⚠️ Error parsing JSON response: {json_error}")
+                                elapsed = time.time() - start_time
+                                if elapsed > max_wait_time:
+                                    monitor.stop()
+                                    print(f"⏰ Timeout after {max_wait_time/60:.1f} minutes")
+                                    return None
+                                time.sleep(check_interval)
+                        else:
+                            # Non-JSON response, continue waiting
+                            elapsed = time.time() - start_time
+                            if elapsed > max_wait_time:
+                                monitor.stop()
+                                print(f"❌ Unexpected response format")
+                                return None
+                            time.sleep(check_interval)
+                    
+                    # Handle processing states (202)
+                    elif status_response.status_code == 202:
+                        # Still processing - normal state
+                        elapsed = time.time() - start_time
+                        elapsed_sec = elapsed
+                        remaining_sec = max_wait_time - elapsed
+                        
+                        if elapsed > max_wait_time:
+                            monitor.stop()
+                            print(f"⏰ Timeout after {max_wait_time} seconds")
+                            return None
+                        
+                        try:
+                            status_data = status_response.json()
+                            status = status_data.get("status", "processing")
+                            print(f"⏳ Florence2 status: {status} ({elapsed_sec:.0f}s elapsed, {remaining_sec:.0f}s remaining)")
+                        except:
+                            print(f"⏳ Florence2 processing... ({elapsed_sec:.0f}s elapsed, {remaining_sec:.0f}s remaining)")
+                        
+                        time.sleep(check_interval)
+                    
+                    else:
+                        # Other status codes - continue waiting with timeout
+                        elapsed = time.time() - start_time
+                        if elapsed > max_wait_time:
+                            monitor.stop()
+                            print(f"❌ Florence2 job failed after timeout")
+                            return None
+                        
+                        print(f"⚠️ Unexpected status code: {status_response.status_code}, continuing...")
+                        time.sleep(check_interval)
+                            
+                except Exception as e:
+                    elapsed = time.time() - start_time
+                    if elapsed > max_wait_time:
+                        monitor.stop()
+                        print(f"❌ Giving up after {max_wait_time} seconds: {e}")
+                        return None
+                    
+                    print(f"⚠️ Exception during status check: {e}, retrying...")
+                    time.sleep(check_interval)
+                    
+        except Exception as e:
+            monitor.stop()
+            print(f"❌ Failed to wait for Florence2 completion: {e}")
+            return None
+
+    def generate_audio_effects(self,
+                             prompt: str,
+                             video_url: Optional[str] = None) -> Optional[bytes]:
+        """Generate audio effects using MMAudio
+        
+        Args:
+            prompt: Text description of the desired audio (e.g., "thunder and rain sounds")
+            video_url: Optional video URL to generate audio for (if None, uses text-to-audio)
+            
+        Returns:
+            Audio data as bytes or None if failed
+        """
+        
+        # Submit the job
+        job_id = self._submit_audio_job(video_url, prompt)
+        
+        if not job_id:
+            print("❌ Failed to submit MMAudio job")
+            return None
+        
+        # Wait for completion and get audio data
+        audio_data = self._wait_for_audio_completion(job_id)
+        
+        return audio_data
+
+    def describe_image(self,
+                      image_url: str,
+                      detail_level: str = "detailed",
+                      reformat: bool = True) -> Optional[str]:
+        """Generate detailed description of an image using Florence2
+        
+        Args:
+            image_url: URL of the image to analyze
+            detail_level: Level of detail ("basic", "detailed", "more_detailed")
+            reformat: Whether to reformat the description for better readability
+            
+        Returns:
+            Image description as string or None if failed
+        """
+        
+        # Submit the job
+        job_id = self._submit_vision_job(image_url, detail_level, reformat)
+        
+        if not job_id:
+            print("❌ Failed to submit Florence2 job")
+            return None
+        
+        # Wait for completion and get result
+        result_data = self._wait_for_vision_completion(job_id)
+        
+        if result_data:
+            # Extract caption from different possible formats
+            caption = result_data.get('caption') or result_data.get('result', {}).get('caption')
+            return caption
+        
+        return None
+    
     def get_info(self):
         """Get system info and available capabilities"""
         return {
@@ -871,22 +1367,35 @@ class ModalManager:
             "qwen_combined_status_api": self.QWEN_STATUS_API,
             "video_submit_api": self.VIDEO_SUBMIT_API,
             "video_status_api": self.VIDEO_STATUS_API,
-            "music_submit_api": self.MUSIC_SUBMIT_API,
-            "music_status_api": self.MUSIC_STATUS_API,
+            "audio_vision_submit_api": self.MUSIC_SUBMIT_API,
+            "audio_vision_status_api": self.MUSIC_STATUS_API,
             "available_functions": [
                 "generate_image_from_prompt",
                 "edit_image", 
                 "generate_video_from_image",
                 "generate_video_from_first_last_images",
-                "generate_music_with_lyrics"
+                "generate_infinite_talk_video",
+                "generate_music_with_lyrics",
+                "generate_audio_effects",
+                "describe_image"
             ],
             "implemented_functions": [
                 "generate_image_from_prompt",
                 "edit_image",
                 "generate_video_from_image",
-                "generate_video_from_first_last_images",
-                "generate_music_with_lyrics"
+                "generate_video_from_first_last_images", 
+                "generate_infinite_talk_video",
+                "generate_music_with_lyrics",
+                "generate_audio_effects",
+                "describe_image"
             ],
             "qwen_workflows": ["tti", "iti"],
-            "response_format": "base64_encoded_images"
+            "video_workflows": ["i2v", "flf2v", "inf_talk_single", "inf_talk_multi"],
+            "audio_vision_tools": ["ace-step", "mmaudio", "florence2"],
+            "audio_vision_capabilities": {
+                "ace-step": "Advanced music generation with lyrics",
+                "mmaudio": "Audio effects generation from video or text prompts",
+                "florence2": "Image captioning and visual understanding"
+            },
+            "response_format": "base64_encoded_images_video_bytes_and_json"
         }
