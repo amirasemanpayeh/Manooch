@@ -23,7 +23,7 @@ import os
 import random
 import base64
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Callable, Tuple
 
 
 class ProgressMonitor:
@@ -74,21 +74,195 @@ class ModalManager:
     QWEN_STATUS_API = "https://amirasemanpayeh--comfyapp-qwen-full-v0-1-comfyui-get-job-status.modal.run"
     VIDEO_SUBMIT_API = "https://amirasemanpayeh--comfyapp-wan2-2-flftv-v0-1-comfyui-subm-f33226.modal.run"
     VIDEO_STATUS_API = "https://amirasemanpayeh--comfyapp-wan2-2-flftv-v0-1-comfyui-get--dfbcf3.modal.run"
-    MUSIC_SUBMIT_API = "https://amirasemanpayeh--audio-vision-tools-v0-1-audiovisiontool-5c9fce.modal.run"
-    MUSIC_STATUS_API = "https://amirasemanpayeh--audio-vision-tools-v0-1-audiovisiontool-e6421c.modal.run"
+    VISION_AUDIO_SUBMIT_API = "https://amirasemanpayeh--audio-vision-tools-v0-1-audiovisiontool-5c9fce.modal.run"
+    VISION_AUDIO_STATUS_API = "https://amirasemanpayeh--audio-vision-tools-v0-1-audiovisiontool-e6421c.modal.run"
     
-    def __init__(self):
+    def __init__(self, *, poll_interval_seconds: float = 10.0, max_wait_seconds: float = 600.0):
         """Initialize the ModalManager"""
         print("ModalManager initialized")
         print(f"Qwen Combined Submit API: {self.QWEN_SUBMIT_API}")
         print(f"Qwen Combined Status API: {self.QWEN_STATUS_API}")
         print(f"Video Submit API: {self.VIDEO_SUBMIT_API}")
         print(f"Video Status API: {self.VIDEO_STATUS_API}")
-        print(f"Music Submit API: {self.MUSIC_SUBMIT_API}")
-        print(f"Music Status API: {self.MUSIC_STATUS_API}")
+        print(f"Music Submit API: {self.VISION_AUDIO_SUBMIT_API}")
+        print(f"Music Status API: {self.VISION_AUDIO_STATUS_API}")
         
+        # Common polling configuration (shared by all jobs)
+        self.poll_interval_seconds = float(poll_interval_seconds)
+        self.max_wait_seconds = float(max_wait_seconds)
+
         # Create a robust session with SSL configuration and retries
         self.session = self._create_robust_session()
+
+    def set_common_timeouts(self, *, poll_interval_seconds: Optional[float] = None, max_wait_seconds: Optional[float] = None) -> None:
+        """Update common polling interval and max wait for all jobs."""
+        if poll_interval_seconds is not None:
+            self.poll_interval_seconds = float(poll_interval_seconds)
+        if max_wait_seconds is not None:
+            self.max_wait_seconds = float(max_wait_seconds)
+
+    # -----------------------------
+    # Common submit/poll primitives
+    # -----------------------------
+    def _submit_job(self, submit_endpoint: str, payload: Dict[str, Any]) -> Optional[str]:
+        try:
+            resp = self.session.post(submit_endpoint, json=payload, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+            job_id = data.get("job_id")
+            if not job_id:
+                print("❌ Submit response missing job_id")
+                return None
+            return job_id
+        except Exception as e:
+            print(f"❌ Failed to submit job: {e}")
+            return None
+
+    def _poll_for_result(
+        self,
+        status_endpoint: str,
+        job_id: str,
+        *,
+        parse_fn: Callable[[requests.Response], Tuple[bool, Optional[Any], Optional[str]]],
+        progress_label: str,
+        poll_interval: Optional[float] = None,
+        max_wait: Optional[float] = None,
+    ) -> Optional[Any]:
+        """Generic polling loop for Modal jobs.
+
+        parse_fn should return a tuple: (done, result, error_message)
+        - done True + result not None => success
+        - done True + result is None => failure; error_message may be set
+        - done False => continue polling
+        """
+        poll_interval = float(poll_interval or self.poll_interval_seconds)
+        max_wait = float(max_wait or self.max_wait_seconds)
+
+        monitor = ProgressMonitor()
+        monitor.start(progress_label)
+        start = time.time()
+
+        try:
+            while True:
+                try:
+                    resp = self.session.post(status_endpoint, json={"job_id": job_id}, timeout=30)
+
+                    # Processing
+                    if resp.status_code == 202:
+                        elapsed = time.time() - start
+                        if elapsed > max_wait:
+                            monitor.stop()
+                            print(f"⏰ Timeout after {max_wait/60:.1f} minutes")
+                            return None
+                        print(f"⏳ Processing... ({elapsed/60:.1f}min elapsed)")
+                        time.sleep(poll_interval)
+                        continue
+
+                    # Success or informative
+                    if resp.status_code == 200:
+                        done, result, error = parse_fn(resp)
+                        if done:
+                            monitor.stop()
+                            if result is not None:
+                                return result
+                            if error:
+                                print(f"❌ Job failed: {error}")
+                            return None
+                        # Not done yet
+                        elapsed = time.time() - start
+                        if elapsed > max_wait:
+                            monitor.stop()
+                            print(f"⏰ Timeout after {max_wait/60:.1f} minutes")
+                            return None
+                        time.sleep(poll_interval)
+                        continue
+
+                    # Other codes: retry until timeout
+                    elapsed = time.time() - start
+                    if elapsed > max_wait:
+                        monitor.stop()
+                        print(f"❌ Job failed after timeout (status {resp.status_code})")
+                        return None
+                    print(f"⚠️ Status {resp.status_code}; retrying in {poll_interval}s...")
+                    time.sleep(poll_interval)
+
+                except Exception as e:
+                    elapsed = time.time() - start
+                    if elapsed > max_wait:
+                        monitor.stop()
+                        print(f"❌ Giving up after {max_wait/60:.1f} minutes: {e}")
+                        return None
+                    print(f"⚠️ Exception during status check: {e}, retrying in {poll_interval}s...")
+                    time.sleep(poll_interval)
+        finally:
+            if monitor.running:
+                monitor.stop()
+
+    # -----------------------------
+    # Parsers per workflow family
+    # -----------------------------
+    def _parse_qwen_image_status(self, resp: requests.Response) -> Tuple[bool, Optional[bytes], Optional[str]]:
+        try:
+            data = resp.json()
+            status = data.get("status")
+            if status == "completed":
+                result = data.get("result", {})
+                img_b64 = result.get("image_base64")
+                if not img_b64:
+                    return True, None, "No image data in response"
+                return True, base64.b64decode(img_b64), None
+            if status == "error":
+                return True, None, data.get("error", "Unknown error")
+            return False, None, None
+        except Exception:
+            return False, None, None
+
+    def _parse_video_status(self, resp: requests.Response) -> Tuple[bool, Optional[bytes], Optional[str]]:
+        content_type = resp.headers.get("content-type", "")
+        if "video" in content_type or "application/octet-stream" in content_type:
+            return True, resp.content, None
+        try:
+            data = resp.json()
+            status = data.get("status")
+            if status == "completed":
+                vid_b64 = data.get("video_base64") or data.get("result", {}).get("video_base64")
+                if vid_b64:
+                    return True, base64.b64decode(vid_b64), None
+                return False, None, None
+            if status == "error":
+                return True, None, data.get("error", "Unknown error")
+            return False, None, None
+        except Exception:
+            return False, None, None
+
+    def _parse_audio_status(self, resp: requests.Response) -> Tuple[bool, Optional[bytes], Optional[str]]:
+        content_type = resp.headers.get("content-type", "")
+        if any(tok in content_type for tok in ("audio", "application/octet-stream")):
+            return True, resp.content, None
+        try:
+            data = resp.json()
+            status = data.get("status")
+            if status == "completed":
+                aud_b64 = data.get("audio_base64") or data.get("result", {}).get("audio_base64")
+                if aud_b64:
+                    return True, base64.b64decode(aud_b64), None
+                return False, None, None
+            if status == "error":
+                return True, None, data.get("error", "Unknown error")
+            return False, None, None
+        except Exception:
+            return False, None, None
+
+    def _parse_vision_status(self, resp: requests.Response) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
+        try:
+            data = resp.json()
+            if data.get("status") == "error":
+                return True, None, data.get("error", "Unknown error")
+            if "caption" in data or ("result" in data and isinstance(data["result"], dict)):
+                return True, data, None
+            return False, None, None
+        except Exception:
+            return False, None, None
 
     def _create_robust_session(self) -> requests.Session:
         """Create a requests session with SSL configuration and retry strategy"""
@@ -174,126 +348,25 @@ class ModalManager:
             "batch_size": batch_size
         }
         
-        try:
-            response = self.session.post(self.QWEN_SUBMIT_API, json=tti_params, timeout=30)
-            response.raise_for_status()
-            
-            result = response.json()
-            job_id = result["job_id"]
-            workflow_type = result.get("workflow_type", "tti")
-            print(f"✅ TTI job submitted successfully!")
-            print(f"📋 Job ID: {job_id}")
-            print(f"🔧 Workflow: {workflow_type}")
-            return job_id
-            
-        except Exception as e:
-            print(f"❌ Failed to submit TTI job: {e}")
-            return None
+        job_id = self._submit_job(self.QWEN_SUBMIT_API, tti_params)
+        if job_id:
+            print(f"✅ TTI job submitted successfully!\n📋 Job ID: {job_id}\n🔧 Workflow: tti")
+        return job_id
 
     def _wait_for_image_completion(self, job_id: str) -> Optional[bytes]:
         """Wait for TTI image generation completion and return image data"""
         
-        print(f"\n🔄 Waiting for TTI image generation to complete...")
-        print(f"📋 Job ID: {job_id}")
-        
-        max_attempts = 60  # 10 minutes at 10-second intervals for high-quality generation
-        monitor = ProgressMonitor()
-        monitor.start("🎨 Generating image")
-        
-        try:
-            for attempt in range(max_attempts):
-                try:
-                    status_response = self.session.post(
-                        self.QWEN_STATUS_API,
-                        json={"job_id": job_id},
-                        timeout=30
-                    )
-                    
-                    # Success case - check for completion
-                    if status_response.status_code == 200:
-                        try:
-                            status_data = status_response.json()
-                            status = status_data.get("status")
-                            
-                            if status == "completed":
-                                # Extract base64 image data from the new format
-                                result = status_data.get("result", {})
-                                image_base64 = result.get("image_base64")
-                                
-                                if image_base64:
-                                    # Decode base64 to bytes
-                                    image_bytes = base64.b64decode(image_base64)
-                                    monitor.stop()
-                                    print("🎉 TTI image generation completed!")
-                                    
-                                    image_size = len(image_bytes)
-                                    print(f"📏 Image size: {image_size / 1024:.1f} KB")
-                                    
-                                    return image_bytes
-                                else:
-                                    monitor.stop()
-                                    print(f"❌ No image data in response")
-                                    return None
-                            
-                            elif status == "error":
-                                error_msg = status_data.get("error", "Unknown error")
-                                monitor.stop()
-                                print(f"❌ Job failed: {error_msg}")
-                                return None
-                            
-                            elif status in ["submitted", "running"]:
-                                print(f"⏳ Status: {status} - waiting 10 seconds...")
-                                time.sleep(10)
-                                continue
-                            
-                            else:
-                                print(f"⚠️ Unknown status: {status}")
-                                time.sleep(10)
-                                continue
-                                
-                        except Exception as json_error:
-                            print(f"⚠️ Error parsing response: {json_error}")
-                            if attempt < 50:  # Allow more time for complex generations
-                                time.sleep(10)
-                                continue
-                            else:
-                                monitor.stop()
-                                return None
-                    
-                    # Handle processing states and temporary errors
-                    elif status_response.status_code == 202:
-                        print(f"⏳ Status: processing - waiting 10 seconds...")
-                        time.sleep(10)
-                        continue
-                    
-                    else:
-                        print(f"⚠️ Status code: {status_response.status_code}")
-                        if attempt < 50:
-                            print(f"⏳ Retrying in 10 seconds...")
-                            time.sleep(10)
-                            continue
-                        else:
-                            monitor.stop()
-                            print(f"❌ Job failed after multiple retries")
-                            return None
-                            
-                except Exception as e:
-                    if attempt < 50:
-                        print(f"⏳ Retrying in 10 seconds...")
-                        time.sleep(10)
-                    else:
-                        monitor.stop()
-                        print(f"❌ Giving up after {max_attempts} attempts: {e}")
-                        return None
-            
-            monitor.stop()
-            print("⏰ Timeout: TTI image generation took longer than 10 minutes")
-            return None
-            
-        except Exception as e:
-            monitor.stop()
-            print(f"❌ Failed to wait for TTI image completion: {e}")
-            return None
+        print(f"\n🔄 Waiting for TTI image generation to complete...\n📋 Job ID: {job_id}")
+        result = self._poll_for_result(
+            self.QWEN_STATUS_API,
+            job_id,
+            parse_fn=self._parse_qwen_image_status,
+            progress_label="🎨 Generating image",
+        )
+        if result is not None:
+            print("🎉 TTI image generation completed!")
+            print(f"📏 Image size: {len(result) / 1024:.1f} KB")
+        return result
 
     def _submit_image_edit_job(self, input_image_url: str, prompt: str) -> Optional[str]:
         """Submit an ITI (image-to-image) editing job and return job ID"""
@@ -309,126 +382,24 @@ class ModalManager:
             "input_image_url": input_image_url
         }
         
-        try:
-            response = self.session.post(self.QWEN_SUBMIT_API, json=iti_params, timeout=30)
-            response.raise_for_status()
-            
-            result = response.json()
-            job_id = result["job_id"]
-            workflow_type = result.get("workflow_type", "iti")
-            print(f"✅ ITI job submitted successfully!")
-            print(f"📋 Job ID: {job_id}")
-            print(f"🔧 Workflow: {workflow_type}")
-            return job_id
-            
-        except Exception as e:
-            print(f"❌ Failed to submit ITI job: {e}")
-            return None
+        job_id = self._submit_job(self.QWEN_SUBMIT_API, iti_params)
+        if job_id:
+            print(f"✅ ITI job submitted successfully!\n📋 Job ID: {job_id}\n🔧 Workflow: iti")
+        return job_id
 
     def _wait_for_image_edit_completion(self, job_id: str) -> Optional[bytes]:
         """Wait for ITI image editing completion and return image data"""
-        
-        print(f"\n🔄 Waiting for ITI image editing to complete...")
-        print(f"📋 Job ID: {job_id}")
-        
-        max_attempts = 60  # 10 minutes at 10-second intervals for high-quality editing
-        monitor = ProgressMonitor()
-        monitor.start("🎨 Editing image")
-        
-        try:
-            for attempt in range(max_attempts):
-                try:
-                    status_response = self.session.post(
-                        self.QWEN_STATUS_API,
-                        json={"job_id": job_id},
-                        timeout=30
-                    )
-                    
-                    # Success case - check for completion
-                    if status_response.status_code == 200:
-                        try:
-                            status_data = status_response.json()
-                            status = status_data.get("status")
-                            
-                            if status == "completed":
-                                # Extract base64 image data from the new format
-                                result = status_data.get("result", {})
-                                image_base64 = result.get("image_base64")
-                                
-                                if image_base64:
-                                    # Decode base64 to bytes
-                                    image_bytes = base64.b64decode(image_base64)
-                                    monitor.stop()
-                                    print("🎉 ITI image editing completed!")
-                                    
-                                    image_size = len(image_bytes)
-                                    print(f"📏 Image size: {image_size / 1024:.1f} KB")
-                                    
-                                    return image_bytes
-                                else:
-                                    monitor.stop()
-                                    print(f"❌ No image data in response")
-                                    return None
-                            
-                            elif status == "error":
-                                error_msg = status_data.get("error", "Unknown error")
-                                monitor.stop()
-                                print(f"❌ Job failed: {error_msg}")
-                                return None
-                            
-                            elif status in ["submitted", "running"]:
-                                print(f"⏳ Status: {status} - waiting 10 seconds...")
-                                time.sleep(10)
-                                continue
-                            
-                            else:
-                                print(f"⚠️ Unknown status: {status}")
-                                time.sleep(10)
-                                continue
-                                
-                        except Exception as json_error:
-                            print(f"⚠️ Error parsing response: {json_error}")
-                            if attempt < 50:  # Allow more time for complex edits
-                                time.sleep(10)
-                                continue
-                            else:
-                                monitor.stop()
-                                return None
-                    
-                    # Handle processing states and temporary errors
-                    elif status_response.status_code == 202:
-                        print(f"⏳ Status: processing - waiting 10 seconds...")
-                        time.sleep(10)
-                        continue
-                    
-                    else:
-                        print(f"⚠️ Status code: {status_response.status_code}")
-                        if attempt < 50:
-                            print(f"⏳ Retrying in 10 seconds...")
-                            time.sleep(10)
-                            continue
-                        else:
-                            monitor.stop()
-                            print(f"❌ Job failed after multiple retries")
-                            return None
-                            
-                except Exception as e:
-                    if attempt < 50:
-                        print(f"⏳ Retrying in 10 seconds...")
-                        time.sleep(10)
-                    else:
-                        monitor.stop()
-                        print(f"❌ Giving up after {max_attempts} attempts: {e}")
-                        return None
-            
-            monitor.stop()
-            print("⏰ Timeout: ITI image editing took longer than 10 minutes")
-            return None
-            
-        except Exception as e:
-            monitor.stop()
-            print(f"❌ Failed to wait for ITI image edit completion: {e}")
-            return None
+        print(f"\n🔄 Waiting for ITI image editing to complete...\n📋 Job ID: {job_id}")
+        result = self._poll_for_result(
+            self.QWEN_STATUS_API,
+            job_id,
+            parse_fn=self._parse_qwen_image_status,
+            progress_label="🎨 Editing image",
+        )
+        if result is not None:
+            print("🎉 ITI image editing completed!")
+            print(f"📏 Image size: {len(result) / 1024:.1f} KB")
+        return result
 
     def _submit_video_job(self, workflow_type: str, prompt: str, width: int, height: int, 
                          frames: int, fps: int, image_url: Optional[str] = None,
@@ -838,7 +809,7 @@ class ModalManager:
         }
         
         try:
-            response = self.session.post(self.MUSIC_SUBMIT_API, json=music_params, timeout=30)
+            response = self.session.post(self.VISION_AUDIO_SUBMIT_API, json=music_params, timeout=30)
             response.raise_for_status()
             
             result = response.json()
@@ -868,7 +839,7 @@ class ModalManager:
             while True:
                 try:
                     status_response = self.session.post(
-                        self.MUSIC_STATUS_API,
+                        self.VISION_AUDIO_STATUS_API,
                         json={"job_id": job_id},
                         timeout=30
                     )
@@ -1018,7 +989,7 @@ class ModalManager:
             audio_params["video_url"] = video_url
         
         try:
-            response = self.session.post(self.MUSIC_SUBMIT_API, json=audio_params, timeout=30)
+            response = self.session.post(self.VISION_AUDIO_SUBMIT_API, json=audio_params, timeout=30)
             response.raise_for_status()
             
             result = response.json()
@@ -1048,7 +1019,7 @@ class ModalManager:
             while True:
                 try:
                     status_response = self.session.post(
-                        self.MUSIC_STATUS_API,
+                        self.VISION_AUDIO_STATUS_API,
                         json={"job_id": job_id},
                         timeout=30
                     )
@@ -1167,7 +1138,7 @@ class ModalManager:
         }
         
         try:
-            response = self.session.post(self.MUSIC_SUBMIT_API, json=vision_params, timeout=30)
+            response = self.session.post(self.VISION_AUDIO_SUBMIT_API, json=vision_params, timeout=30)
             response.raise_for_status()
             
             result = response.json()
@@ -1178,6 +1149,38 @@ class ModalManager:
             
         except Exception as e:
             print(f"❌ Failed to submit Florence2 job: {e}")
+            return None
+
+    def _submit_tts_job(self, audio_url: str, text: str, exaggeration: float = 0.5, cfg_weight: float = 0.5) -> Optional[str]:
+        """Submit a Chatterbox TTS voice cloning job and return job ID"""
+        
+        print(f"🚀 Submitting Chatterbox TTS voice cloning job...")
+        print(f"🎤 Reference Audio: {audio_url}")
+        print(f"📝 Text: {text}")
+        print(f"🎭 Exaggeration: {exaggeration}")
+        print(f"⚖️ CFG Weight: {cfg_weight}")
+        
+        # Prepare TTS parameters for unified endpoint
+        tts_params = {
+            "tool": "chatterbox_tts",
+            "audio_url": audio_url,
+            "text": text,
+            "exaggeration": float(exaggeration),
+            "cfg_weight": float(cfg_weight)
+        }
+        
+        try:
+            response = self.session.post(self.VISION_AUDIO_SUBMIT_API, json=tts_params, timeout=30)
+            response.raise_for_status()
+            
+            result = response.json()
+            job_id = result["job_id"]
+            print(f"✅ Chatterbox TTS job submitted successfully!")
+            print(f"📋 Job ID: {job_id}")
+            return job_id
+            
+        except Exception as e:
+            print(f"❌ Failed to submit Chatterbox TTS job: {e}")
             return None
 
     def _wait_for_vision_completion(self, job_id: str) -> Optional[Dict[str, Any]]:
@@ -1197,7 +1200,7 @@ class ModalManager:
             while True:
                 try:
                     status_response = self.session.post(
-                        self.MUSIC_STATUS_API,
+                        self.VISION_AUDIO_STATUS_API,
                         json={"job_id": job_id},
                         timeout=30
                     )
@@ -1326,6 +1329,26 @@ class ModalManager:
         audio_data = self._wait_for_audio_completion(job_id)
         
         return audio_data
+    
+    def _wait_for_tts_completion(self, job_id: str) -> Optional[bytes]:
+        """Wait for Chatterbox TTS voice cloning completion and return audio data"""
+        
+        print(f"\n🔄 Waiting for Chatterbox TTS voice cloning to complete...")
+        print(f"📋 Job ID: {job_id}")
+        
+        result = self._poll_for_result(
+            self.VISION_AUDIO_STATUS_API,
+            job_id,
+            parse_fn=self._parse_audio_status,
+            progress_label="🗣️ Cloning voice",
+            max_wait=180.0  # 3 minutes max wait for TTS
+        )
+        
+        if result is not None:
+            print("🎉 Chatterbox TTS voice cloning completed!")
+            print(f"📏 Audio size: {len(result) / 1024:.1f} KB")
+        
+        return result
 
     def describe_image(self,
                       image_url: str,
@@ -1359,6 +1382,35 @@ class ModalManager:
         
         return None
     
+    def generate_voice_clone(self,
+                           audio_url: str,
+                           text: str,
+                           exaggeration: float = 0.5,
+                           cfg_weight: float = 0.5) -> Optional[bytes]:
+        """Generate speech using Chatterbox TTS voice cloning
+        
+        Args:
+            audio_url: URL of the reference audio to clone the voice from
+            text: Text to be spoken in the cloned voice
+            exaggeration: Voice exaggeration level (0.0-1.0, default: 0.5)
+            cfg_weight: CFG weight for balancing voice similarity and text fidelity (0.0-1.0, default: 0.5)
+            
+        Returns:
+            Audio data as bytes or None if failed
+        """
+        
+        # Submit the job
+        job_id = self._submit_tts_job(audio_url, text, exaggeration, cfg_weight)
+        
+        if not job_id:
+            print("❌ Failed to submit Chatterbox TTS job")
+            return None
+        
+        # Wait for completion and get audio data
+        audio_data = self._wait_for_tts_completion(job_id)
+        
+        return audio_data
+    
     def get_info(self):
         """Get system info and available capabilities"""
         return {
@@ -1367,8 +1419,8 @@ class ModalManager:
             "qwen_combined_status_api": self.QWEN_STATUS_API,
             "video_submit_api": self.VIDEO_SUBMIT_API,
             "video_status_api": self.VIDEO_STATUS_API,
-            "audio_vision_submit_api": self.MUSIC_SUBMIT_API,
-            "audio_vision_status_api": self.MUSIC_STATUS_API,
+            "audio_vision_submit_api": self.VISION_AUDIO_SUBMIT_API,
+            "audio_vision_status_api": self.VISION_AUDIO_STATUS_API,
             "available_functions": [
                 "generate_image_from_prompt",
                 "edit_image", 
@@ -1377,25 +1429,28 @@ class ModalManager:
                 "generate_infinite_talk_video",
                 "generate_music_with_lyrics",
                 "generate_audio_effects",
-                "describe_image"
+                "describe_image",
+                "generate_voice_clone"
             ],
             "implemented_functions": [
                 "generate_image_from_prompt",
                 "edit_image",
                 "generate_video_from_image",
-                "generate_video_from_first_last_images", 
+                "generate_video_from_first_last_frames", 
                 "generate_infinite_talk_video",
                 "generate_music_with_lyrics",
                 "generate_audio_effects",
-                "describe_image"
+                "describe_image",
+                "generate_voice_clone"
             ],
             "qwen_workflows": ["tti", "iti"],
             "video_workflows": ["i2v", "flf2v", "inf_talk_single", "inf_talk_multi"],
-            "audio_vision_tools": ["ace-step", "mmaudio", "florence2"],
+            "audio_vision_tools": ["ace-step", "mmaudio", "florence2", "chatterbox_tts"],
             "audio_vision_capabilities": {
                 "ace-step": "Advanced music generation with lyrics",
                 "mmaudio": "Audio effects generation from video or text prompts",
-                "florence2": "Image captioning and visual understanding"
+                "florence2": "Image captioning and visual understanding",
+                "chatterbox_tts": "Voice cloning and text-to-speech generation"
             },
             "response_format": "base64_encoded_images_video_bytes_and_json"
         }

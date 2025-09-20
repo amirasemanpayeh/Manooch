@@ -4,7 +4,14 @@ def main() -> None:
     Demonstrates basic subreddit scraping functionality
     """
     from logic.reddit_scrapper import RedditScrapper
+    from utils.settings_manager import settings
+    from utils.supabase_manager import SupabaseManager
+    from utils.modal_manager import ModalManager
     
+    # Initialize core services
+    supabase_manager = SupabaseManager(url=settings.supabase_url, key=settings.supabase_key)
+    modal_manager = ModalManager()
+
     # Initialize scrapper with auto-refreshing free proxies
     scrapper = RedditScrapper(proxies=None)
     
