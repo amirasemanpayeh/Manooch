@@ -5,3 +5,5 @@ pydantic
 websockets
 pydantic-settings
 python-dotenv
+pydub
+ffmpeg-python

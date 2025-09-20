@@ -80,13 +80,6 @@ class ModalManager:
     def __init__(self, *, poll_interval_seconds: float = 10.0, max_wait_seconds: float = 600.0):
         """Initialize the ModalManager"""
         print("ModalManager initialized")
-        print(f"Qwen Combined Submit API: {self.QWEN_SUBMIT_API}")
-        print(f"Qwen Combined Status API: {self.QWEN_STATUS_API}")
-        print(f"Video Submit API: {self.VIDEO_SUBMIT_API}")
-        print(f"Video Status API: {self.VIDEO_STATUS_API}")
-        print(f"Music Submit API: {self.VISION_AUDIO_SUBMIT_API}")
-        print(f"Music Status API: {self.VISION_AUDIO_STATUS_API}")
-        
         # Common polling configuration (shared by all jobs)
         self.poll_interval_seconds = float(poll_interval_seconds)
         self.max_wait_seconds = float(max_wait_seconds)
@@ -726,7 +719,7 @@ class ModalManager:
                                    prompt: str,
                                    width: int = 573,
                                    height: int = 806,
-                                   frames: int = 200,
+                                   frames: int = 1000,
                                    fps: int = 25) -> Optional[bytes]:
         """Generate InfiniteTalk video with automatic workflow selection based on number of audio files
         
@@ -967,8 +960,8 @@ class ModalManager:
         audio_data = self._wait_for_music_completion(job_id)
         
         return audio_data
-    
-    def _submit_audio_job(self, video_url: Optional[str], prompt: str) -> Optional[str]:
+
+    def _submit_audio_job(self, video_url: Optional[str], prompt: str, duration: Optional[int] = None) -> Optional[str]:
         """Submit an MMAudio audio effects generation job and return job ID"""
         
         print(f"🚀 Submitting MMAudio audio effects generation job...")
@@ -982,11 +975,16 @@ class ModalManager:
         audio_params = {
             "tool": "mmaudio",
             "prompt": prompt
+
         }
         
         # Add video URL if provided
         if video_url:
             audio_params["video_url"] = video_url
+
+        # Add duration if provided
+        if duration:
+            audio_params["duration"] = duration
         
         try:
             response = self.session.post(self.VISION_AUDIO_SUBMIT_API, json=audio_params, timeout=30)
@@ -1307,6 +1305,7 @@ class ModalManager:
 
     def generate_audio_effects(self,
                              prompt: str,
+                             duration: Optional[int] = None,
                              video_url: Optional[str] = None) -> Optional[bytes]:
         """Generate audio effects using MMAudio
         
@@ -1319,7 +1318,7 @@ class ModalManager:
         """
         
         # Submit the job
-        job_id = self._submit_audio_job(video_url, prompt)
+        job_id = self._submit_audio_job(video_url, prompt, duration)
         
         if not job_id:
             print("❌ Failed to submit MMAudio job")

@@ -6,7 +6,8 @@ from pydantic_settings import BaseSettings
 from dotenv import load_dotenv # type: ignore
 
 # Load environment variables from .env file
-load_dotenv(os.path.join(os.path.dirname(__file__), '../../.env'))
+env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+load_dotenv(env_path)
 
 class Settings(BaseSettings):
     # =============================================
@@ -162,7 +163,7 @@ class Settings(BaseSettings):
     post_logic_worker_claim_timeout: int = 30
 
     class Config:
-        env_file = os.path.join(os.path.dirname(__file__), '../../.env')
+        env_file = os.path.join(os.path.dirname(__file__), '..', '.env')
         # Allow environment variables to override defaults
         env_prefix = ""  # No prefix, use exact variable names
 
