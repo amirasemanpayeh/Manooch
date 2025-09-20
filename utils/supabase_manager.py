@@ -1,4 +1,5 @@
 from enum import Enum
+import logging
 import json
 import random
 import uuid
@@ -8,13 +9,51 @@ from datetime import datetime, timezone
 
 from supabase import create_client
 from typing import Any, Dict, Iterable, Literal, Optional, List
-from app.models.basic_models import AdSpecModel, AppNotificationModel, BrandModel, CreditGrantBatchModel, CreditTransactionModel, InviteTokenModel, PostModel, PostQuestionnaireModel, UserProfileModel, WaitListUserModel
+from models.basic_models import (
+    AdSpecModel,
+    AppNotificationModel,
+    BrandModel,
+    CreditGrantBatchModel,
+    CreditTransactionModel,
+    InviteTokenModel,
+    PostModel,
+    PostQuestionnaireModel,
+    UserProfileModel,
+    WaitListUserModel,
+)
 
-from app.utils.settings_manager import settings  # Adjust the import path as needed
-from app.utils.logging_config import get_supabase_logger
+from utils.settings_manager import settings  # Adjusted import path for this repo
+
+
+
+def get_supabase_logger(name: str = "SupabaseManager") -> logging.Logger:
+    """Create or fetch a configured logger for Supabase components.
+
+    - Ensures a single stream handler with a simple format.
+    - Respects an optional `settings.log_level` if present, defaults to INFO.
+    """
+    log = logging.getLogger(name)
+
+    if not log.handlers:
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter(
+            fmt="%(asctime)s | %(levelname)s | %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+        handler.setFormatter(formatter)
+        log.addHandler(handler)
+
+        level_name = getattr(settings, "log_level", "INFO")
+        level = getattr(logging, str(level_name).upper(), logging.INFO)
+        log.setLevel(level)
+        # Avoid duplicate logs if root logger has handlers
+        log.propagate = False
+
+    return log
+
 
 # Initialize logger
-logger = get_supabase_logger("SupabaseRealtime")
+logger = get_supabase_logger("SupabaseManager")
 
 def log_realtime(message: str, level: str = 'info'):
     """Structured logging for realtime events"""
@@ -927,8 +966,8 @@ class SupabaseManager:
             current_counter = response.data[0].get("generation_counter", 0)  # Default to 0 if None
             new_counter = current_counter + 1
 
-            # ✅ Step 2: Update the counter
-            update_response = self.client.table("ad_spec").update({"generation_counter": new_counter}).eq("id", post_id).execute()
+            # ✅ Step 2: Update the counter on the correct table ('post')
+            update_response = self.client.table("post").update({"generation_counter": new_counter}).eq("id", post_id).execute()
 
             # Debugging: Check the update response
             self.logger.info(f"Update response: {update_response}")
@@ -1849,4 +1888,3 @@ def set_supabase_manager(instance):
 
 def get_supabase_manager():
     return supabase_manager.get_instance()
-
