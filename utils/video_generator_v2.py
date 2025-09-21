@@ -671,85 +671,106 @@ class VideoGenerator:
         self.logger.info(f"Generating keyframe image for '{keyframe.id}'")
         
         try:
-            # Step 1: Resolve set variant image
-            if keyframe.set:
-                keyframe.set = self._resolve_set_variant(video, keyframe.set)
-                if not keyframe.set.image_url:
-                    self.logger.error(f"Failed to resolve set variant for keyframe '{keyframe.id}'")
-                    return None
+            # We need to modify this slightly to handle the basic cases with no set and no characters
+            # Thats just when we want simple t2i or i2i generation for the keyframe without the set and characters features
+            if not keyframe.set and not keyframe.characters:
+                self.logger.info(f"Keyframe '{keyframe.id}' has no set or character variants - using basic generation")
+                
+                # No we know want basic generation, we can check if we have supplied image or just prompt
+                if keyframe.supplied_image_url:
+                    # This is an edit of a supplied image
+                    final_image_bytes = self.modal_manager.edit_image(
+                        input_image_url=keyframe.supplied_image_url,
+                        prompt=keyframe.basic_generation_prompt)
+
+                else:
+                    # This is a generation from prompt only
+                    final_image_bytes = self.modal_manager.generate_image_from_prompt(
+                        prompt=keyframe.basic_generation_prompt,
+                        width=keyframe.width,
+                        height=keyframe.height,
+                        batch_size=1)
+
             else:
-                self.logger.warning(f"Keyframe '{keyframe.id}' has no set variant - using white background")
-            
-            # Step 2: Resolve character variant images
-            resolved_character_variants = []
-            for char_variant in keyframe.characters:
-                resolved_variant = self._resolve_character_variant(video, char_variant)
-                if resolved_variant and resolved_variant.image_url:
-                    resolved_character_variants.append(resolved_variant)
+                # Step 1: Resolve set variant image
+                if keyframe.set:
+                    keyframe.set = self._resolve_set_variant(video, keyframe.set)
+                    if not keyframe.set.image_url:
+                        self.logger.error(f"Failed to resolve set variant for keyframe '{keyframe.id}'")
+                        return None
                 else:
-                    self.logger.warning(f"Failed to resolve character variant '{char_variant.id}' - skipping")
-            
-            # Update keyframe with resolved variants
-            keyframe.characters = resolved_character_variants
-            
-            # Check if there are no characters - if so, skip board creation and I2I editing
-            if not keyframe.characters:
-                self.logger.info(f"Keyframe '{keyframe.id}' has no characters - using set variant image directly")
-                if keyframe.set and keyframe.set.image_url:
-                    self.logger.info(f"Using set variant image as keyframe: {keyframe.set.image_url}")
-                    return keyframe.set.image_url
-                else:
-                    self.logger.error(f"No set variant image available for keyframe '{keyframe.id}'")
+                    self.logger.warning(f"Keyframe '{keyframe.id}' has no set variant - using white background")
+                
+                # Step 2: Resolve character variant images
+                resolved_character_variants = []
+                for char_variant in keyframe.characters:
+                    resolved_variant = self._resolve_character_variant(video, char_variant)
+                    if resolved_variant and resolved_variant.image_url:
+                        resolved_character_variants.append(resolved_variant)
+                    else:
+                        self.logger.warning(f"Failed to resolve character variant '{char_variant.id}' - skipping")
+                
+                # Update keyframe with resolved variants
+                keyframe.characters = resolved_character_variants
+                
+                # Check if there are no characters - if so, skip board creation and I2I editing
+                if not keyframe.characters:
+                    self.logger.info(f"Keyframe '{keyframe.id}' has no characters - using set variant image directly")
+                    if keyframe.set and keyframe.set.image_url:
+                        self.logger.info(f"Using set variant image as keyframe: {keyframe.set.image_url}")
+                        return keyframe.set.image_url
+                    else:
+                        self.logger.error(f"No set variant image available for keyframe '{keyframe.id}'")
+                        return None
+                
+                # Step 3: Create composition board (only when there are characters)
+                board_url = self._create_keyframe_board(
+                    set_variant=keyframe.set,
+                    character_variants=keyframe.characters,
+                    width=keyframe.width,
+                    height=keyframe.height,
+                    keyframe_id=keyframe.id
+                )
+                
+                if not board_url:
+                    self.logger.error(f"Failed to create board for keyframe '{keyframe.id}'")
                     return None
-            
-            # Step 3: Create composition board (only when there are characters)
-            board_url = self._create_keyframe_board(
-                set_variant=keyframe.set,
-                character_variants=keyframe.characters,
-                width=keyframe.width,
-                height=keyframe.height,
-                keyframe_id=keyframe.id
-            )
-            
-            if not board_url:
-                self.logger.error(f"Failed to create board for keyframe '{keyframe.id}'")
-                return None
-            
-            # Step 4: Final image edit to polish the composition (only when there are characters)
-            # get the final prompt
-            chars_prompts = []
-            char_variant_prompts = []
-            chars_actions = []
-            chars_placements = []
+                
+                # Step 4: Final image edit to polish the composition (only when there are characters)
+                # get the final prompt
+                chars_prompts = []
+                char_variant_prompts = []
+                chars_actions = []
+                chars_placements = []
 
-            for character in keyframe.characters: 
-                # Get parent character information for better prompts
-                parent_character = video.get_character_by_id(character.parent_id)
-                chars_prompts.append(parent_character.prompt)
-                char_variant_prompts.append(character.prompt)
-                chars_actions.append(character.action_in_frame)
-                chars_placements.append(character.placement_hint.prompt_label)
+                for character in keyframe.characters: 
+                    # Get parent character information for better prompts
+                    parent_character = video.get_character_by_id(character.parent_id)
+                    chars_prompts.append(parent_character.prompt)
+                    char_variant_prompts.append(character.prompt)
+                    chars_actions.append(character.action_in_frame)
+                    chars_placements.append(character.placement_hint.prompt_label)
 
-            #final_prompt = VideoEnginePromptGenerator.build_keyframe_composition_prompt(
-            #    chars_prompts,
-            #    chars_actions,
-            #    chars_placements
-            #)
+                #final_prompt = VideoEnginePromptGenerator.build_keyframe_composition_prompt(
+                #    chars_prompts,
+                #    chars_actions,
+                #    chars_placements
+                #)
 
-            final_prompt = VideoEnginePromptGenerator.build_keyframe_composition_prompt_v2(
-                chars_prompts,
-                char_variant_prompts,
-                chars_actions,
-                chars_placements
-            )
+                final_prompt = VideoEnginePromptGenerator.build_keyframe_composition_prompt_v2(
+                    chars_prompts,
+                    char_variant_prompts,
+                    chars_actions,
+                    chars_placements
+                )
 
-            #final_prompt = self._build_keyframe_composition_prompt(video, keyframe)
-            final_image_bytes = self._edit_image_with_provider(
-                input_image_url=board_url,
-                prompt=final_prompt,
-                target_width=keyframe.width,
-                target_height=keyframe.height
-            )
+                #final_prompt = self._build_keyframe_composition_prompt(video, keyframe)
+                final_image_bytes = self._edit_image_with_provider(
+                    input_image_url=board_url,
+                    prompt=final_prompt,
+                    target_width=keyframe.width,
+                    target_height=keyframe.height
+                )
             
             if not final_image_bytes:
                 self.logger.error(f"Failed to generate final edit for keyframe '{keyframe.id}'")

@@ -3,7 +3,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.modal_manager import ModalManager
-from utils.supabase_manager import SupabaseManager, set_supabase_manager, get_supabase_manager
+from utils.supabase_manager import SupabaseManager, set_supabase_manager
 from utils.audio_video_tools import AudioVideoMixer
 from utils.audio_tools import AudioTools
 from utils.settings_manager import settings

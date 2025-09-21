@@ -441,6 +441,8 @@ class KeyFrame:
 
     characters: List[CharacterVariant] = field(default_factory=list)
 
+    basic_generation_prompt: str = ""  # Simple prompt for the keyframe (for I2V / FF+LF
+
     image_url: Optional[str] = None  # The URL of the generated image for the keyframe
     rendered_frame_by_vid_gen_url: Optional[str] = None  # The URL of the rendered frame by the video generator
 
