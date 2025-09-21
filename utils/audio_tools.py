@@ -162,7 +162,7 @@ class AudioTools:
         
         padded_audio.export(output_audio_path, format="wav")
 
-
+    
     @staticmethod
     def sync_multi_talk_audios(audio_files: list[str]) -> list[str]:
         """Process multiple audio files for sequential multi-speaker conversation."""

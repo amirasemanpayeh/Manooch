@@ -190,13 +190,13 @@ class VideoPromptITV:
 class RenderEngine(Enum):
     """
     How frames are realized into motion for the shot.
-    - MOTION selects I2V normally; if end-locked, engine uses FF+LF under the hood.
+    - GENERATIVE_MOTION selects I2V normally; if end-locked, engine uses FF+LF under the hood.
     - STILL holds the start frame for the duration (title cards, info slates).
-    - AUDIO_DRIVEN uses a sound-to-video model (image+audio → talking).
+    - LIPSYNC_MOTION uses a sound-to-video model (image+audio → talking).
     """
-    MOTION = "Motion"
     STILL = "Still"
-    AUDIO_DRIVEN = "AudioDriven"
+    GENERATIVE_MOTION = "GenerativeMotion"
+    LIPSYNC_MOTION = "LipSyncMotion"
 
 class Transition(Enum):
     """Editorial transition out of this shot into the next."""
@@ -368,6 +368,7 @@ class CharacterVariant:
 
     script: str = "" # Characters script to be spoken
     audio_url: Optional[str] = None # The URL of the audio of the character spoken script
+    audio_padded_url: Optional[str] = None # The URL of the padded audio for the character spoken script with other characters involved.
 
     placement_hint: Placement = Placement.CENTER_FOREGROUND
 
@@ -391,6 +392,15 @@ class Music:
     prompt: str = ""
     lyrics: str = ""
     duration: int = 0 # set to -1 to indicate no specific duration, dictated by the lyrics
+    audio_url: Optional[str] = None  # The URL of the audio file
+
+
+@dataclass
+class BackgroundAudioEffects:
+    """Defines the background audio effects for a video block."""
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    is_enabled: bool = True
+    prompt: str = ""
     audio_url: Optional[str] = None  # The URL of the audio file
 
 
@@ -449,7 +459,7 @@ class VideoBlock:
     id: str = field(default_factory=lambda: str(uuid.uuid4()))    
     storyline_label: Optional[str] = None    # Optional UX/AI grouping label (parallel narratives etc.)
 
-    render_engine: RenderEngine = RenderEngine.MOTION        # Rendering mode (how to realize frames)
+    render_engine: RenderEngine = RenderEngine.GENERATIVE_MOTION        # Rendering mode (how to realize frames)
     duration_seconds: int = DEFAULT_SHOT_DURATION_SECONDS    # Timing
     fps: int = 16
     width: int = 720  # The width of the keyframe image
@@ -461,11 +471,13 @@ class VideoBlock:
     video_prompt: str = ""         # Motion / camera / action description (I2V / FF+LF hints)
     style: str = "default"
 
-    narration: Optional[Narration] = None    # Optional narration (also provides audio for AUDIO_DRIVEN)
+    narration: Optional[Narration] = None    # Optional narration (also provides audio for LIPSYNC_MOTION)
     overlays: List[TextOverlay] = field(default_factory=list)  # Overlays
 
     generated_video_clip: Optional[str] = None    # Engine outputs / caches (populated by the engine)
     transition: Transition = Transition.CUT     # Linking / continuity
+
+    bg_audio_effects: BackgroundAudioEffects = field(default_factory=BackgroundAudioEffects)
 
     # Utility / validation helpers
     def validated_duration(self) -> int:

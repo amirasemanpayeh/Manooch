@@ -28,6 +28,7 @@ from PIL import Image
 # Import external dependencies
 from prompts.video_engine_prompts import VideoEnginePromptGenerator
 from models.video_engine_models import Character, CharacterVariant, KeyFrame, KeyframeSource, Music, Placement, RenderEngine, Set, SetVariant, Transition, Video, VideoBlock
+from utils.audio_tools import AudioTools
 from utils.modal_manager import ModalManager
 from utils.openai_manager import OpenAIManager
 from utils.audio_video_tools import AudioVideoMixer
@@ -1214,9 +1215,9 @@ class VideoGenerator:
         if shot.render_engine == RenderEngine.STILL:
             #TODO Create a function to take the first frame and make a still video
             pass
-        elif (shot.render_engine == RenderEngine.MOTION):
+        elif (shot.render_engine == RenderEngine.GENERATIVE_MOTION):
             if not shot.first_keyframe:
-                raise ValueError("MOTION engine requires first_keyframe")
+                raise ValueError("GENERATIVE_MOTION engine requires first_keyframe")
 
             if (shot.last_keyframe.source == KeyframeSource.NOT_USED):
                 # Video is to be generated only with the first keyframe, use i2v
@@ -1231,7 +1232,7 @@ class VideoGenerator:
             else:
                 # Video is to be generated with both keyframes use fflf2v
                 if not shot.last_keyframe:
-                    raise ValueError("MOTION engine requires last_keyframe (or set it explicitly to NOT_USED)")
+                    raise ValueError("GENERATIVE_MOTION engine requires last_keyframe (or set it explicitly to NOT_USED)")
                 
                 start_frame = None
                 if (shot.first_keyframe.source == KeyframeSource.COPY_PREV_LAST):
@@ -1253,7 +1254,7 @@ class VideoGenerator:
                     frames=frame_count,
                     fps=shot.fps
                 )
-        elif (shot.render_engine == RenderEngine.AUDIO_DRIVEN):
+        elif (shot.render_engine == RenderEngine.LIPSYNC_MOTION):
             #TODO Implement audio-driven video generation
             pass
 
@@ -1341,6 +1342,79 @@ class VideoGenerator:
                 self.logger.warning(f"⚠️ Warning: Audio generation failed: {e}")
                 # Continue processing without audio
         return shot
+    
+    def _create_bg_audio_effects(self, shot: VideoBlock) -> Optional[VideoBlock]:
+        """Generate audio effects when present."""
+        #TODO: Finalise this
+        # Here we need to use modal mmaudio to pass the generated video, its best to do it before narration mixing
+        # Then mmaudio will return a new audio track with effects
+        # Sometimes it creates vocals too, se we need to remove the vocals from the generated audio
+        
+        if shot.bg_audio_effects and shot.bg_audio_effects.is_enabled:
+            self.logger.info("🎬 Generating background audio effects for final assembly...")
+
+            try:
+
+                # Generate audio effects using mmaudio
+                effects_audio_bytes = self.modal_manager.generate_audio_effects(
+                    video_url=shot.generated_video_clip,
+                    prompt=shot.bg_audio_effects.prompt,
+                    duration=shot.duration_seconds
+                )
+                
+                if effects_audio_bytes:
+                    # Upload the generated audio effects
+                    effects_audio_url = self._upload_audio_asset_to_bucket(effects_audio_bytes)
+
+                    results = AudioTools.separate_audio_extract(
+                            effects_audio_url, ["instrumental"]
+                        )
+                    instrumental_path = results.get("instrumental")
+
+                            # Upload final video to Supabase
+                    print("📤 Uploading final layered video to Supabase...")
+                    with open(instrumental_path, 'rb') as f:
+                        final_video_bytes = f.read()
+
+                    # Upload the generated audio effects
+                    filtered_bg_effect_path = self._upload_audio_asset_to_bucket(final_video_bytes)
+
+                    shot.bg_audio_effects.audio_url = filtered_bg_effect_path
+                    self.logger.info(f"✅ Successfully generated and uploaded audio effects: {filtered_bg_effect_path}")
+                else:
+                    self.logger.warning("⚠️ Warning: Failed to generate audio effects")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Warning: Audio effects generation failed: {e}")
+                # Continue processing without audio effects
+        return shot
+    
+
+    def _create_characters_speech_audio(self, shot: VideoBlock) -> Optional[VideoBlock]:
+        """Generate character speech audio when present."""
+        #TODO: Implement this
+        # Here we need to use chatterbox to generate character speech audio
+        # Then if there are multiple characters speaking we need to sync them
+        # This means we need to define the order of characters speaking in the shot
+        # Then add silent gaps before or after each character's speech to sync them
+
+        # Each shot has a list of variants, each variant has a parent character
+        # The parent character has a voice sample which we need to use for voice cloning
+        # Step 1- from shot character_variants get the parent character by id
+        # Step 2 - use the parent id to get the voice sample url
+
+        # Then we look at the character variant script to get the text data to speak
+        # Step 3 - use the voice sample url and script to generate the audio
+        # Step 4 - upload the audio and set the character_variant.audio_url
+
+        # once we have all the character_variant.audio_url we need to sync them
+        # We need to loop through the character_variants in the order they are defined in the shot and add their audio_urls to a list
+        # Step 5 - use sync_multi_talk_audios to sync the audio files
+        # The returned list is a list of audio files in the order they should be played with silent padding added to each audio file
+        # upload each of them individually and set the character_variant.audio_padded_url
+    
+        # Out side of this function the padded ones are all concatenated to a single audio track for the shot
+        return shot
+
 
     def _mix_narration_audio(self, shot: VideoBlock) -> Optional[VideoBlock]:
         """Generate/mix narration audio when present."""
