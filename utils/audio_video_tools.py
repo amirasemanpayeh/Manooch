@@ -1,4 +1,5 @@
 import os
+import math
 import tempfile
 import shutil
 import uuid
@@ -54,32 +55,96 @@ class AudioVideoMixer:
             
             # Step 2: Download/prepare audio files and process volumes
             processed_audio_files = []
+
+            # Detect target video duration to sync audio lengths
+            target_duration = None
+            try:
+                probe = subprocess.run([
+                    'ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', str(video_local_path)
+                ], capture_output=True, text=True)
+                if probe.returncode == 0:
+                    info = json.loads(probe.stdout)
+                    target_duration = float(info['format']['duration'])
+            except Exception:
+                target_duration = None
+
             for i, (audio_file, volume) in enumerate(zip(audio_files, audio_volumes)):
                 print(f"🎵 Processing audio file {i+1}/{len(audio_files)} (volume: {volume})...")
-                
                 # Download if URL
                 if audio_file.startswith(('http://', 'https://')):
                     audio_local_path = AudioVideoMixer._download_file(audio_file, video_dump_path, f"input_audio_{batch_id}_{i}")
                 else:
                     audio_local_path = audio_file
-                
-                # Apply volume adjustment using pydub
+
+                # Apply volume adjustment using pydub (correct dB conversion)
                 audio_segment = AudioSegment.from_file(audio_local_path)
-                
-                # Convert volume (0.0-1.0) to dB change
-                if volume == 0.0:
-                    # Mute the audio
-                    volume_db = -60  # Very quiet
+
+                if volume <= 0.0:
+                    volume_db = -60.0
                 else:
-                    # Convert linear volume to dB (0.5 = -6dB, 1.0 = 0dB)
-                    volume_db = 20 * (volume - 1)  # logarithmic scale
-                
-                # Apply volume adjustment
+                    # Convert linear gain to dB accurately: gain_db = 20*log10(gain)
+                    try:
+                        volume_db = 20.0 * math.log10(volume)
+                    except ValueError:
+                        volume_db = 0.0
+
                 adjusted_audio = audio_segment + volume_db
-                
-                # Save adjusted audio
+
+                # Save adjusted audio to temp
                 adjusted_audio_path = video_dump_path / f"adjusted_audio_{batch_id}_{i}.wav"
                 adjusted_audio.export(str(adjusted_audio_path), format="wav")
+
+                # If possible, time-stretch to match target video duration
+                if target_duration is not None:
+                    # Probe audio duration
+                    try:
+                        a_probe = subprocess.run([
+                            'ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', str(adjusted_audio_path)
+                        ], capture_output=True, text=True)
+                        if a_probe.returncode == 0:
+                            a_info = json.loads(a_probe.stdout)
+                            a_duration = float(a_info['format']['duration'])
+                        else:
+                            a_duration = None
+                    except Exception:
+                        a_duration = None
+
+                    if a_duration and abs(a_duration - target_duration) > 0.05:
+                        speed_factor = a_duration / target_duration
+                        # Build atempo chain to cover wide factors
+                        filters = []
+                        current = speed_factor
+                        if current > 0:
+                            while current > 2.0:
+                                filters.append('atempo=2.0')
+                                current /= 2.0
+                            while current < 0.5:
+                                filters.append('atempo=0.5')
+                                current /= 0.5
+                            if abs(current - 1.0) > 0.01:
+                                filters.append(f'atempo={current:.6f}')
+
+                        synced_path = video_dump_path / f"synced_audio_{batch_id}_{i}.wav"
+                        cmd_sync = [
+                            'ffmpeg', '-y', '-i', str(adjusted_audio_path)
+                        ]
+                        if filters:
+                            cmd_sync += ['-af', ','.join(filters)]
+                        cmd_sync += [str(synced_path)]
+                        try:
+                            res = subprocess.run(cmd_sync, capture_output=True, text=True)
+                            if res.returncode == 0:
+                                # Replace adjusted path with synced path
+                                try:
+                                    adjusted_audio_path.unlink(missing_ok=True)
+                                except Exception:
+                                    pass
+                                adjusted_audio_path = synced_path
+                            else:
+                                print(f"⚠️ Audio sync (speed adjust) failed for track {i}: {res.stderr}")
+                        except Exception as e:
+                            print(f"⚠️ Audio sync exception for track {i}: {e}")
+
                 processed_audio_files.append(str(adjusted_audio_path))
             
             # Step 3: Use FFmpeg to mix all audio tracks with the video
@@ -310,11 +375,17 @@ class AudioVideoMixer:
                 # Video has audio - mix with input audio files
                 if len(audio_files) == 1:
                     # Simple case: one audio track + video audio
-                    filter_complex = f"[0:a][1:a]amix=inputs=2:duration=longest[a]"
+                    filter_complex = (
+                        f"[0:a][1:a]amix=inputs=2:duration=longest:normalize=1,"
+                        f"alimiter=limit=0.95[a]"
+                    )
                 else:
                     # Multiple audio tracks: mix them all together with video audio
                     audio_mix_inputs = "".join([f"[{i+1}:a]" for i in range(len(audio_files))])
-                    filter_complex = f"[0:a]{audio_mix_inputs}amix=inputs={len(audio_files)+1}:duration=longest[a]"
+                    filter_complex = (
+                        f"[0:a]{audio_mix_inputs}amix=inputs={len(audio_files)+1}:duration=longest:normalize=1,"
+                        f"alimiter=limit=0.95[a]"
+                    )
                 
                 cmd.extend([
                     "-filter_complex", filter_complex,
@@ -332,7 +403,10 @@ class AudioVideoMixer:
                 else:
                     # Multiple audio files: mix them together
                     audio_mix_inputs = "".join([f"[{i+1}:a]" for i in range(len(audio_files))])
-                    filter_complex = f"{audio_mix_inputs}amix=inputs={len(audio_files)}:duration=longest[a]"
+                    filter_complex = (
+                        f"{audio_mix_inputs}amix=inputs={len(audio_files)}:duration=longest:normalize=1,"
+                        f"alimiter=limit=0.95[a]"
+                    )
                     cmd.extend([
                         "-filter_complex", filter_complex,
                         "-map", "0:v",  # Use video from first input
@@ -344,7 +418,7 @@ class AudioVideoMixer:
                 "-c:v", "copy",  # Copy video without re-encoding
                 "-c:a", "aac",   # Encode audio as AAC
                 "-b:a", "192k",  # Audio bitrate
-                "-shortest",     # Make output duration match shortest input
+                # No -shortest: let video stream define duration; audios are time-adjusted to match
                 output_path
             ])
             

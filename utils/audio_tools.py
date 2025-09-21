@@ -5,7 +5,7 @@ import shutil
 import uuid
 from pathlib import Path
 from pydub import AudioSegment
-from typing import Optional
+from typing import Optional, TYPE_CHECKING, Any, Protocol
 import importlib.util as _importlib_util
 
 # Expose the AudioSeparator via AudioTools
@@ -26,24 +26,33 @@ except Exception:
     _sep_cls = None
 
 # Alias for downstream use
+# Runtime alias to the dynamically imported separator class (may be None)
 AudioSeparator = _sep_cls
+
+# Static type for Pylance/mypy without importing at runtime
+if TYPE_CHECKING:
+    class AudioSeparatorType(Protocol):
+        def separate_extract(self, audio_input: str, filters: list[str]) -> dict[str, str]: ...
+        def separate_keep(self, audio_input: str, filters: list[str], output_basename: Optional[str] = None) -> str: ...
+else:
+    AudioSeparatorType = Any
 
 
 class AudioTools:
     """Utility functions for audio processing"""
 
     # Cached separator instance (lazy)
-    _audio_separator_instance: Optional["AudioSeparator"] = None
+    _audio_separator_instance: Optional["AudioSeparatorType"] = None
 
     @classmethod
-    def _get_audio_separator(cls) -> "AudioSeparator":
+    def _get_audio_separator(cls) -> "AudioSeparatorType":
         """Lazily construct and cache the AudioSeparator using project storage paths.
 
         Returns:
             AudioSeparator instance configured to use storage/audio_dump and
             storage/ai_models/audio_separator
         """
-        if AudioSeparator is None:
+        if _sep_cls is None:
             raise RuntimeError(
                 "AudioSeparator is not available. Ensure utils/audio_tools/audio_seperator.py exists "
                 "and required dependencies (demucs, pydub) are installed."
@@ -52,7 +61,7 @@ class AudioTools:
             # Use our storage conventions automatically
             temp_dir = str(cls._get_audio_dump_path())
             models_dir = Path(__file__).parent.parent / "storage" / "ai_models" / "audio_separator"
-            cls._audio_separator_instance = AudioSeparator(temp_dir=temp_dir, models_dir=str(models_dir))
+            cls._audio_separator_instance = _sep_cls(temp_dir=temp_dir, models_dir=str(models_dir))
         return cls._audio_separator_instance
 
     # Public API wrappers for audio separation
