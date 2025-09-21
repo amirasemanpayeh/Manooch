@@ -8,14 +8,28 @@ import time
 import logging
 import webcolors
 from typing import Any, Dict, List, Optional, Union
-from openai import OpenAI # type: ignore
-from fastapi import APIRouter, HTTPException, Query
 import requests
-from app.utils.settings_manager import settings  # Adjust the import path as needed
-from app.utils.logging_config import get_openai_manager_logger
 
-# Use the emoji logger
-logger = get_openai_manager_logger("OpenAIManager")
+# Optional OpenAI import
+try:
+    from openai import OpenAI  # type: ignore
+except Exception:
+    OpenAI = None  # type: ignore
+
+from utils.settings_manager import settings
+
+def _get_logger(name: str) -> logging.Logger:
+    log = logging.getLogger(name)
+    if not log.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        log.addHandler(handler)
+        log.setLevel(logging.INFO)
+        log.propagate = False
+    return log
+
+# Local logger
+logger = _get_logger("OpenAIManager")
 
 class OpenAIManager:
     _instance = None
@@ -23,11 +37,12 @@ class OpenAIManager:
     def __new__(cls, api_key: str = None):
         if cls._instance is None:
             cls._instance = super(OpenAIManager, cls).__new__(cls)
-            cls._instance.logger = get_openai_manager_logger("OpenAIManager")
-            if api_key:
+            cls._instance.logger = _get_logger("OpenAIManager")
+            # Initialize client only if OpenAI is available and an API key is provided
+            if OpenAI is not None and api_key:
                 cls._instance.client = OpenAI(api_key=api_key)
             else:
-                raise ValueError("API key must be provided for the first initialization")
+                cls._instance.client = None
         return cls._instance
     
     def set_instance(self, instance):
@@ -49,6 +64,9 @@ class OpenAIManager:
 
     def generate_image_gpt_image_1(self, prompt: str, quality: str = "medium", size: str = "1024x1536") -> Optional[bytes]:
         try:
+            if not getattr(self, 'client', None):
+                logger.error("OpenAI client not initialized; cannot call generate")
+                return None
             response = self.client.images.generate(
                 model="gpt-image-1",
                 prompt=prompt,
@@ -100,6 +118,9 @@ class OpenAIManager:
             temp_paths = []
 
             try:
+                if not getattr(self, 'client', None):
+                    logger.error("OpenAI client not initialized; cannot call edit")
+                    return None
 
                 # Step 1: Write each image to disk
                 for idx, img_bytes in enumerate(images):

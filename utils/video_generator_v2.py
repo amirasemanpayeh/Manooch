@@ -33,6 +33,8 @@ from utils.modal_manager import ModalManager
 from utils.openai_manager import OpenAIManager
 from utils.audio_video_tools import AudioVideoMixer
 from utils.video_tools.video_stitcher import VideoStitcher
+import importlib.util as _importlib_util
+from pathlib import Path as _Path
 
 from utils.supabase_manager import SupabaseManager
 from utils.settings_manager import Settings
@@ -68,11 +70,31 @@ class VideoGenerator:
         
         # Initialize external dependencies
         self.modal_manager = ModalManager()
-        self.openai_manager = OpenAIManager(api_key=self.settings.openai_api_key)
+        # Instantiate OpenAI only if configured, to avoid optional dependency issues
+        self.openai_manager = (
+            OpenAIManager(api_key=self.settings.openai_api_key)
+            if getattr(self.settings, "use_openai_for_image_editing", False)
+            else None
+        )
         
         # Initialize video processing tools individually to avoid circular imports
         self.video_stitcher: VideoStitcher = VideoStitcher()
         self.audio_video_mixer: AudioVideoMixer = AudioVideoMixer()
+
+        # Dynamically import VideoTools class from utils/video_tools.py (name collides with package)
+        try:
+            _vt_path = _Path(__file__).parent / "video_tools.py"
+            _spec = _importlib_util.spec_from_file_location("utils.video_tools_file", str(_vt_path))
+            if _spec and _spec.loader:
+                _vt_mod = _importlib_util.module_from_spec(_spec)
+                _spec.loader.exec_module(_vt_mod)
+                _VT = getattr(_vt_mod, "VideoTools", None)
+                self.video_tools = _VT() if _VT else None
+            else:
+                self.video_tools = None
+        except Exception as e:
+            print(f"Warning: Could not load VideoTools: {e}")
+            self.video_tools = None
 
         # Import here to avoid circular dependency
         try:
@@ -128,19 +150,39 @@ class VideoGenerator:
         Universal image editing method that routes to OpenAI or Modal based on settings.
         Handles size constraints and resizing automatically for OpenAI.
         """
+        primary_is_openai = bool(getattr(self.settings, "use_openai_for_image_editing", False))
+
+        def try_openai():
+            if not self.openai_manager:
+                return None
+            self.logger.info("Using OpenAI GPT-image-1 for image editing")
+            return self._edit_image_with_openai(input_image_url, prompt, target_width, target_height)
+
+        def try_modal():
+            self.logger.info("Using Qwen I2I (Modal) for image editing")
+            try:
+                return self.modal_manager.edit_image(input_image_url=input_image_url, prompt=prompt)
+            except Exception as e:
+                self.logger.error(f"Modal I2I failed: {e}")
+                return None
+
+        # Attempt primary provider, then fallback to the other if available
+        result = None
         try:
-            if self.settings.use_openai_for_image_editing:
-                self.logger.info("Using OpenAI GPT-image-1 for image editing")
-                return self._edit_image_with_openai(input_image_url, prompt, target_width, target_height)
-            else:
-                self.logger.info("Using Qwen I2I (Modal) for image editing")
-                return self.modal_manager.edit_image(
-                    input_image_url=input_image_url,
-                    prompt=prompt
-                )
+            result = try_openai() if primary_is_openai else try_modal()
         except Exception as e:
-            self.logger.error(f"Image editing failed with primary provider: {e}")
-            return None
+            self.logger.error(f"Primary image editing provider error: {e}")
+            result = None
+
+        if result is None:
+            self.logger.info("Falling back to alternate image editing provider")
+            try:
+                result = try_modal() if primary_is_openai else try_openai()
+            except Exception as e:
+                self.logger.error(f"Fallback image editing provider error: {e}")
+                result = None
+
+        return result
 
     def _edit_image_with_openai(self, input_image_url: str, prompt: str, target_width: int = None, target_height: int = None) -> bytes:
         """
@@ -1211,10 +1253,27 @@ class VideoGenerator:
         video_bytes = None
         frame_count = shot.frame_count()
 
-        self.logger.info(f"Rendering video for shot '{shot.id}' - placeholder implementation")
+        self.logger.info(f"Rendering video for shot '{shot.id}'")
         if shot.render_engine == RenderEngine.STILL:
-            #TODO Create a function to take the first frame and make a still video
-            pass
+            # Create a still video from the first keyframe image for the shot duration
+            if not shot.first_keyframe or not shot.first_keyframe.image_url:
+                raise ValueError("STILL engine requires first_keyframe with image_url")
+
+            duration_sec = shot.duration_seconds
+            try:
+                if self.video_tools and hasattr(self.video_tools, "image_to_still_video"):
+                    video_bytes = self.video_tools.image_to_still_video(
+                        image=shot.first_keyframe.image_url,
+                        duration_seconds=duration_sec,
+                        width=shot.width,
+                        height=shot.height,
+                        fps=shot.fps,
+                    )
+                else:
+                    raise RuntimeError("VideoTools.image_to_still_video not available")
+            except Exception as e:
+                self.logger.error(f"Failed to create still video: {e}")
+                video_bytes = None
         elif (shot.render_engine == RenderEngine.GENERATIVE_MOTION):
             if not shot.first_keyframe:
                 raise ValueError("GENERATIVE_MOTION engine requires first_keyframe")
@@ -1255,8 +1314,35 @@ class VideoGenerator:
                     fps=shot.fps
                 )
         elif (shot.render_engine == RenderEngine.LIPSYNC_MOTION):
-            #TODO Implement audio-driven video generation
-            pass
+            # Audio-driven lip-sync using InfiniteTalk
+            if not shot.first_keyframe or not shot.first_keyframe.image_url:
+                raise ValueError("LIPSYNC_MOTION requires first_keyframe with image_url")
+
+            # Collect up to 2 audio files: prefer character variants, fallback to narration
+            audio_files = []
+            try:
+                for cv in (shot.first_keyframe.characters or []):
+                    if getattr(cv, 'audio_padded_url', None):
+                        audio_files.append(cv.audio_padded_url)
+                        if len(audio_files) >= 2:
+                            break
+                if not audio_files and shot.narration and shot.narration.audio_url:
+                    audio_files.append(shot.narration.audio_url)
+            except Exception:
+                pass
+
+            if not audio_files:
+                raise ValueError("LIPSYNC_MOTION requires at least one audio_url (character variant or narration)")
+
+            video_bytes = self.modal_manager.generate_infinite_talk_video(
+                image_url=shot.first_keyframe.image_url,
+                audio_files=audio_files,
+                prompt=shot.video_prompt,
+                width=shot.width,
+                height=shot.height,
+                frames=shot.frame_count(),  # upper limit; audio dictates final length
+                fps=shot.fps
+            )
 
         # Check if video is generated okay, then extract its last frame from the video file and upload
         # Set the url to shot.last_keyframe.rendered_frame_by_vid_gen_url
@@ -1264,10 +1350,16 @@ class VideoGenerator:
             # Upload the generated video
             video_url = self._upload_video_asset_to_bucket(video_bytes)
             shot.generated_video_clip = video_url
+            shot.generated_video_clip_raw = video_url
             self.logger.info(f"Successfully generated and uploaded video: {video_url}")
 
             # Extract the last frame of the video and replace the shot's last_keyframe.rendered_frame_by_vid_gen_url
-            shot.last_keyframe.rendered_frame_by_vid_gen_url = self._extract_last_frame_from_video(video_bytes)
+            try:
+                last_frame_url = self._extract_last_frame_from_video(video_bytes)
+                if shot.last_keyframe:
+                    shot.last_keyframe.rendered_frame_by_vid_gen_url = last_frame_url
+            except Exception as e:
+                self.logger.warning(f"Failed to extract last frame: {e}")
         else:
             self.logger.error("⚠️ Warning: Video generation returned no data")
             raise ValueError("Failed to generate video from single image source")
@@ -1277,7 +1369,8 @@ class VideoGenerator:
     def _apply_overlays(self, shot: VideoBlock) -> Optional[VideoBlock]:
         """Apply text overlays (static/duration/progressive)."""
         # Process text overlays if any are specified
-        if shot.overlays and shot.generated_video_clip:
+        base_video_url = shot.generated_video_clip_raw or shot.generated_video_clip
+        if shot.overlays and base_video_url:
             self.logger.info(f"🎨 Processing {len(shot.overlays)} text overlays for video block")
 
             try:
@@ -1285,14 +1378,15 @@ class VideoGenerator:
                 if self.text_overlay_manager:
                     # Apply overlays to the generated video
                     video_with_overlays_bytes = self.text_overlay_manager.add_text_overlays_to_video(
-                        video_url=shot.generated_video_clip,
+                        video_url=base_video_url,
                         overlays=shot.overlays
                     )
                     
                     if video_with_overlays_bytes:
                         # Upload the video with overlays
                         overlayed_video_url = self._upload_video_asset_to_bucket(video_with_overlays_bytes)
-                        shot.generated_video_clip = overlayed_video_url  # Replace with overlayed version
+                        shot.generated_video_clip_with_overlays = overlayed_video_url
+                        shot.generated_video_clip = overlayed_video_url  # maintain backward compatibility
                         self.logger.info(f"✅ Successfully added text overlays and uploaded: {overlayed_video_url}")
                     else:
                         self.logger.warning("⚠️ Warning: Failed to generate video with overlays, keeping original video")
@@ -1303,9 +1397,16 @@ class VideoGenerator:
                 self.logger.warning(f"⚠️ Warning: Failed to process text overlays: {e}")
                 self.logger.info("Continuing with original video without overlays")
 
-        elif shot.overlays and not shot.generated_video_clip:
+        elif shot.overlays and not base_video_url:
             self.logger.warning("⚠️ Warning: Text overlays specified but no video generated to apply them to")
             pass
+
+        # If no overlays applied or none specified, carry forward raw video
+        if not shot.generated_video_clip_with_overlays:
+            if base_video_url:
+                shot.generated_video_clip_with_overlays = base_video_url
+            else:
+                shot.generated_video_clip_with_overlays = shot.generated_video_clip
 
         return shot
 
@@ -1366,21 +1467,22 @@ class VideoGenerator:
                     # Upload the generated audio effects
                     effects_audio_url = self._upload_audio_asset_to_bucket(effects_audio_bytes)
 
-                    results = AudioTools.separate_audio_extract(
+                    # Remove vocals while preserving all other stems (drums, bass, other)
+                    try:
+                        instrumental_path = AudioTools.separate_audio_keep(
                             effects_audio_url, ["instrumental"]
                         )
-                    instrumental_path = results.get("instrumental")
 
-                            # Upload final video to Supabase
-                    print("📤 Uploading final layered video to Supabase...")
-                    with open(instrumental_path, 'rb') as f:
-                        final_video_bytes = f.read()
-
-                    # Upload the generated audio effects
-                    filtered_bg_effect_path = self._upload_audio_asset_to_bucket(final_video_bytes)
-
-                    shot.bg_audio_effects.audio_url = filtered_bg_effect_path
-                    self.logger.info(f"✅ Successfully generated and uploaded audio effects: {filtered_bg_effect_path}")
+                        # Upload the filtered (no vocals) background SFX
+                        with open(instrumental_path, 'rb') as f:
+                            filtered_audio_bytes = f.read()
+                        filtered_bg_effect_url = self._upload_audio_asset_to_bucket(filtered_audio_bytes)
+                        shot.bg_audio_effects.audio_url = filtered_bg_effect_url
+                        self.logger.info(f"✅ Generated background SFX (no vocals): {filtered_bg_effect_url}")
+                    except Exception as sep_err:
+                        # Fallback: use original effects track if separation fails
+                        self.logger.warning(f"⚠️ Vocal removal failed; using original effects: {sep_err}")
+                        shot.bg_audio_effects.audio_url = effects_audio_url
                 else:
                     self.logger.warning("⚠️ Warning: Failed to generate audio effects")
             except Exception as e:
@@ -1389,69 +1491,164 @@ class VideoGenerator:
         return shot
     
 
-    def _create_characters_speech_audio(self, shot: VideoBlock) -> Optional[VideoBlock]:
-        """Generate character speech audio when present."""
-        #TODO: Implement this
-        # Here we need to use chatterbox to generate character speech audio
-        # Then if there are multiple characters speaking we need to sync them
-        # This means we need to define the order of characters speaking in the shot
-        # Then add silent gaps before or after each character's speech to sync them
+    def _create_characters_speech_audio(self, video: Video, shot: VideoBlock) -> Optional[VideoBlock]:
+        """Generate character speech audio per variant, then produce padded versions for multi-talk sync.
 
-        # Each shot has a list of variants, each variant has a parent character
-        # The parent character has a voice sample which we need to use for voice cloning
-        # Step 1- from shot character_variants get the parent character by id
-        # Step 2 - use the parent id to get the voice sample url
+        - Uses parent character voice_sample_url (if available) + variant.script to synthesize speech.
+        - Uploads raw speech to variant.audio_url.
+        - Runs sync_multi_talk_audios on up to 2 characters (in order) and uploads padded files to variant.audio_padded_url.
+        """
+        try:
+            # Only relevant for LipSync engine and when characters are present
+            if shot.render_engine != RenderEngine.LIPSYNC_MOTION:
+                return shot
+            if not shot.first_keyframe or not shot.first_keyframe.characters:
+                return shot
 
-        # Then we look at the character variant script to get the text data to speak
-        # Step 3 - use the voice sample url and script to generate the audio
-        # Step 4 - upload the audio and set the character_variant.audio_url
+            variants = shot.first_keyframe.characters
 
-        # once we have all the character_variant.audio_url we need to sync them
-        # We need to loop through the character_variants in the order they are defined in the shot and add their audio_urls to a list
-        # Step 5 - use sync_multi_talk_audios to sync the audio files
-        # The returned list is a list of audio files in the order they should be played with silent padding added to each audio file
-        # upload each of them individually and set the character_variant.audio_padded_url
-    
-        # Out side of this function the padded ones are all concatenated to a single audio track for the shot
-        return shot
+            # Step 1: Generate raw speech for each variant that has a script
+            for cv in variants:
+                script = getattr(cv, 'script', None)
+                if not script or not script.strip():
+                    continue
+                if getattr(cv, 'audio_url', None):
+                    continue  # already has audio
 
+                # Find parent character voice sample
+                parent = video.get_character_by_id(cv.parent_id) if hasattr(video, 'get_character_by_id') else None
+                voice_sample_url = getattr(parent, 'voice_sample_url', None) if parent else None
 
-    def _mix_narration_audio(self, shot: VideoBlock) -> Optional[VideoBlock]:
-        """Generate/mix narration audio when present."""
-        # Add the narration audio to video and upload the whole thing
-        if shot.generated_video_clip and shot.narration and shot.narration.audio_url:
-            self.logger.info("🎬 Combining video (with overlays if applied) and audio for final assembly...")
+                try:
+                    audio_bytes = self.modal_manager.generate_voice_clone(
+                        audio_url=voice_sample_url or "",
+                        text=script,
+                        exaggeration=0.5,
+                        cfg_weight=0.6,
+                    )
+                except Exception as e:
+                    self.logger.warning(f"Voice clone failed for variant {cv.id}: {e}")
+                    audio_bytes = None
 
+                if audio_bytes:
+                    url = self._upload_audio_asset_to_bucket(audio_bytes)
+                    cv.audio_url = url
+                    self.logger.info(f"Generated speech for variant {cv.id}: {url}")
+
+            # Step 2: Prepare ordered list (max 2) for sync; prefer padded later
+            ordered_with_audio = []
+            for cv in variants:
+                url = getattr(cv, 'audio_url', None)
+                if url:
+                    ordered_with_audio.append((cv, url))
+                if len(ordered_with_audio) >= 2:
+                    break
+
+            if not ordered_with_audio:
+                return shot
+
+            if len(ordered_with_audio) == 1:
+                # Single speaker: just set padded URL equal to raw audio for convenience
+                cv, url = ordered_with_audio[0]
+                cv.audio_padded_url = url
+                return shot
+
+            # Step 3: Multi-speaker (max 2) sync with left/right padding
             try:
-                # Download the video and audio files
-                import requests
-                
-                # Download video (this will be the overlayed version if overlays were applied)
-                video_response = requests.get(shot.generated_video_clip, timeout=60)
-                video_response.raise_for_status()
-                video_bytes = video_response.content
+                audio_urls = [url for (_, url) in ordered_with_audio]
+                synced_paths = AudioTools.sync_multi_talk_audios(audio_urls)
+                if len(synced_paths) != len(ordered_with_audio):
+                    self.logger.warning("sync_multi_talk_audios returned unexpected count; skipping padding upload")
+                    return shot
 
-                # Download audio
-                audio_response = requests.get(shot.narration.audio_url, timeout=60)
-                audio_response.raise_for_status()
-                audio_bytes = audio_response.content
-                
-                # Mix video and audio using sync-blend utility
-                final_video_bytes = self.audio_video_mixer.sync_blend_audio_video(
-                    video_data=video_bytes,
-                    audio_data=audio_bytes,
-                    output_filename=f"final_video_{shot.id}.mp4",
-                    audio_volume=1.0  # Could be made configurable
-                )
-                
-                # Upload the final combined video
-                final_video_url = self._upload_video_asset_to_bucket(final_video_bytes)
-                shot.generated_video_clip = final_video_url  # Replace with final version
-                self.logger.info(f"✅ Successfully combined and uploaded final video: {final_video_url}")
-
+                for (cv, _), local_path in zip(ordered_with_audio, synced_paths):
+                    try:
+                        with open(local_path, 'rb') as f:
+                            padded_bytes = f.read()
+                        padded_url = self._upload_audio_asset_to_bucket(padded_bytes)
+                        cv.audio_padded_url = padded_url
+                        self.logger.info(f"Uploaded padded speech for variant {cv.id}: {padded_url}")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to upload padded audio for variant {cv.id}: {e}")
             except Exception as e:
-                self.logger.warning(f"⚠️ Warning: Failed to combine video and audio: {e}")
-                self.logger.info("Continuing with separate video and audio assets")
+                self.logger.warning(f"Failed syncing multi-talk audios: {e}")
+                # Fall back to unpadded
+                for cv, url in ordered_with_audio:
+                    cv.audio_padded_url = url
+
+            return shot
+
+        except Exception as e:
+            self.logger.warning(f"Characters speech generation failed: {e}")
+            return shot
+
+
+    def _mix_audio_layers_into_video(self, shot: VideoBlock) -> Optional[VideoBlock]:
+        """Blend audio layers (characters, narration, SFX) and add them to the video.
+
+        Produces and uploads the final per-shot video with overlays and audio, setting
+        `generated_video_clip_with_audio_and_overlays` and `generated_video_clip_final`.
+        """
+        try:
+            # Determine base video to mix onto: overlays result preferred, else raw
+            base_video = shot.generated_video_clip_with_overlays or shot.generated_video_clip_raw or shot.generated_video_clip
+            if not base_video:
+                return shot
+
+            audio_files: list[str] = []
+            audio_vols: list[float] = []
+
+            # Character padded audios (in order, up to 2)
+            try:
+                if shot.first_keyframe and shot.first_keyframe.characters:
+                    for cv in shot.first_keyframe.characters:
+                        url = getattr(cv, 'audio_padded_url', None)
+                        if url:
+                            audio_files.append(url)
+                            audio_vols.append(1.0)
+                            if len(audio_files) >= 2:
+                                break
+            except Exception:
+                pass
+
+            # Narration (if present)
+            if shot.narration and shot.narration.audio_url:
+                audio_files.append(shot.narration.audio_url)
+                audio_vols.append(1.0)
+
+            # Background audio effects (SFX), quieter
+            if shot.bg_audio_effects and shot.bg_audio_effects.audio_url:
+                audio_files.append(shot.bg_audio_effects.audio_url)
+                audio_vols.append(0.3)
+
+            if not audio_files:
+                # No audio to add; carry forward overlays video
+                shot.generated_video_clip_with_audio_and_overlays = base_video
+                shot.generated_video_clip_final = base_video
+                return shot
+
+            # Mix all audio layers onto the video
+            mixed_path = self.audio_video_mixer.mix_audio_to_video(
+                video_path=base_video,
+                audio_files=audio_files,
+                audio_volumes=audio_vols,
+            )
+
+            # Upload mixed video bytes
+            with open(mixed_path, 'rb') as f:
+                mixed_bytes = f.read()
+            final_video_url = self._upload_video_asset_to_bucket(mixed_bytes)
+
+            shot.generated_video_clip_with_audio_and_overlays = final_video_url
+            shot.generated_video_clip_final = final_video_url
+            self.logger.info(f"✅ Mixed audio (chars/narration/SFX) and uploaded: {final_video_url}")
+        except Exception as e:
+            self.logger.warning(f"⚠️ Audio blending failed: {e}")
+            # Fallback: retain overlays-only video
+            shot.generated_video_clip_with_audio_and_overlays = (
+                shot.generated_video_clip_with_overlays or shot.generated_video_clip_raw or shot.generated_video_clip
+            )
+            shot.generated_video_clip_final = shot.generated_video_clip_with_audio_and_overlays
         return shot
 
     def _resolve_background_music(self, bg_music: Music, forced_duration: int) -> Music:
@@ -1552,10 +1749,23 @@ class VideoGenerator:
 
             # Step 3: Process the shots for video generation
             for shot in video.shots:
+                # For lip-sync motion, generate character speech and padded audios first because they are needed for video generation
+                if shot.render_engine == RenderEngine.LIPSYNC_MOTION:
+                    shot = self._create_characters_speech_audio(video, shot)
+
+                # Generate the video for the shot based on the render engine and keyframes
                 shot = self._render_video(shot, video)
-                shot = self._apply_overlays(shot)
+
+                # Create background audio effect if needed, it needs to happen after rendering the video and before overlays are added
+                shot = self._create_bg_audio_effects(shot)                
+                # Create narration audio if needed
                 shot = self._create_narration_audio(shot)
-                shot = self._mix_narration_audio(shot)
+
+                # Apply text overlays if any
+                shot = self._apply_overlays(shot)
+
+                # Finally blend all audio layers for this shot (characters, narration, SFX)
+                shot = self._mix_audio_layers_into_video(shot)
 
                 video.shots[video.shots.index(shot)] = shot
 
@@ -1564,9 +1774,9 @@ class VideoGenerator:
             video_urls = []
 
             for shot in video.shots:
-                if shot.generated_video_clip:
-                    video_urls.append(shot.generated_video_clip)
-                    print(f"✅ Shot {shot.id[:8]}... has video: {shot.generated_video_clip}")
+                if shot.generated_video_clip_final:
+                    video_urls.append(shot.generated_video_clip_final)
+                    print(f"✅ Shot {shot.id[:8]}... has video: {shot.generated_video_clip_final}")
                 else:
                     print(f"⚠️ Warning: Shot {shot.id[:8]}... has no generated video")
             

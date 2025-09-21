@@ -472,12 +472,17 @@ class VideoBlock:
     style: str = "default"
 
     narration: Optional[Narration] = None    # Optional narration (also provides audio for LIPSYNC_MOTION)
+    bg_audio_effects: BackgroundAudioEffects = field(default_factory=BackgroundAudioEffects)
     overlays: List[TextOverlay] = field(default_factory=list)  # Overlays
 
-    generated_video_clip: Optional[str] = None    # Engine outputs / caches (populated by the engine)
+    generated_video_clip_raw: Optional[str] = None    # Engine outputs / caches (populated by the engine)
+    generated_video_clip_with_overlays: Optional[str] = None    # Engine outputs / caches (populated by the engine)
+    generated_video_clip_with_audio_and_overlays: Optional[str] = None    # Engine outputs / caches (populated by the engine)
+
+    generated_video_clip_final: Optional[str] = None    # Final output after music added (populated by the engine)
+
     transition: Transition = Transition.CUT     # Linking / continuity
 
-    bg_audio_effects: BackgroundAudioEffects = field(default_factory=BackgroundAudioEffects)
 
     # Utility / validation helpers
     def validated_duration(self) -> int:

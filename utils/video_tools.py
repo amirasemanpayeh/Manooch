@@ -97,6 +97,90 @@ class VideoTools:
         self.mixer = AudioVideoMixer(output_dir=output_dir, temp_dir=temp_dir)
         self.text_overlay_manager = VideoTextOverlayManager()
 
+    def image_to_still_video(
+        self,
+        image: Union[str, bytes],
+        duration_seconds: float,
+        width: int,
+        height: int,
+        fps: int = 25,
+    ) -> bytes:
+        """Create a fixed-length video from an image (URL, path, or raw bytes).
+
+        Returns the resulting MP4 as bytes.
+        """
+        import subprocess
+        import tempfile
+        from pathlib import Path
+
+        temp_root = Path(self.stitcher.temp_dir) if hasattr(self, "stitcher") else get_video_dump_path()
+        temp_root.mkdir(parents=True, exist_ok=True)
+
+        # Prepare image locally
+        img_path: Optional[Path] = None
+        out_path: Optional[Path] = None
+        try:
+            if isinstance(image, (bytes, bytearray)):
+                with tempfile.NamedTemporaryFile(dir=temp_root, suffix=".png", delete=False) as tmp:
+                    tmp.write(image)
+                    img_path = Path(tmp.name)
+            elif isinstance(image, str):
+                if image.startswith(("http://", "https://")):
+                    # Download
+                    resp = requests.get(image, timeout=60)
+                    resp.raise_for_status()
+                    with tempfile.NamedTemporaryFile(dir=temp_root, suffix=".png", delete=False) as tmp:
+                        tmp.write(resp.content)
+                        img_path = Path(tmp.name)
+                else:
+                    # Treat as local path
+                    p = Path(image)
+                    if not p.exists():
+                        raise FileNotFoundError(f"Image not found: {image}")
+                    img_path = p
+            else:
+                raise ValueError("Unsupported image input type")
+
+            with tempfile.NamedTemporaryFile(dir=temp_root, suffix=".mp4", delete=False) as tmp_out:
+                out_path = Path(tmp_out.name)
+
+            # Scale then pad to exact target, loop to duration
+            filter_v = (
+                f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+                f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black"
+            )
+            cmd = [
+                "ffmpeg", "-y",
+                "-loop", "1",
+                "-i", str(img_path),
+                "-t", str(duration_seconds),
+                "-r", str(fps),
+                "-vf", filter_v,
+                "-pix_fmt", "yuv420p",
+                "-an",
+                str(out_path),
+            ]
+
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise RuntimeError(f"ffmpeg failed: {result.stderr}")
+
+            with open(out_path, "rb") as f:
+                return f.read()
+
+        finally:
+            # Cleanup temp files we created
+            try:
+                if img_path and img_path.exists() and not isinstance(image, str):
+                    img_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+            try:
+                if out_path and out_path.exists():
+                    out_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+
 
 def run_all_video_transitions():
     """Test all available video transitions on two sample videos."""
