@@ -425,6 +425,87 @@ class ModalManagerTests:
             import traceback
             traceback.print_exc()
             return False
+        
+    def test_audio_seperation(self):
+        """Test audio separation using Demucs via AudioTools wrapper.
+
+        The sample is a mix with vocals and piano. We will:
+        - Extract stems for vocals and instrumental (mix of non-vocals)
+        - Verify files exist in storage/audio_dump
+        - Print basic duration diagnostics
+        - Additionally test 'keep' API for vocals-only output
+        """
+        print("\n" + "="*60)
+        print("🎶 STARTING AUDIO SEPARATION TEST")
+        print("="*60)
+
+        VOCAL_PIANO_MIX_URL = (
+            "https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_audios/0ca92e64-9517-4294-abf1-5d06ca89de05.wav"
+        )
+
+        try:
+            step_start = time.time()
+            print(f"🎵 Input Mix: {VOCAL_PIANO_MIX_URL}")
+            print("🧪 Extracting stems: ['vocals', 'instrumental']")
+
+            results = AudioTools.separate_audio_extract(
+                VOCAL_PIANO_MIX_URL, ["vocals", "instrumental"]
+            )
+
+            vocals_path = results.get("vocals")
+            instrumental_path = results.get("instrumental")
+            print(f"🎤 Vocals Path: {vocals_path}")
+            print(f"🎼 Instrumental Path: {instrumental_path}")
+
+            if not vocals_path or not os.path.exists(vocals_path):
+                print("❌ Vocals stem file missing")
+                return False
+            if not instrumental_path or not os.path.exists(instrumental_path):
+                print("❌ Instrumental stem file missing")
+                return False
+
+            # Duration diagnostics (both are WAV)
+            try:
+                vocals_dur = AudioTools.get_audio_duration(vocals_path)
+                instr_dur = AudioTools.get_audio_duration(instrumental_path)
+                print(f"⏱️  Vocals duration: {vocals_dur:.2f}s")
+                print(f"⏱️  Instrumental duration: {instr_dur:.2f}s")
+            except Exception as e:
+                print(f"⚠️ Duration check skipped: {e}")
+
+            # Also validate 'keep' API for a single stem
+            print("\n🔒 Testing keep API: ['vocals'] -> single output")
+            kept_vocals_path = AudioTools.separate_audio_keep(
+                VOCAL_PIANO_MIX_URL, ["vocals"], output_basename="kept_vocals"
+            )
+            print(f"🎯 Kept Vocals Path: {kept_vocals_path}")
+            if not kept_vocals_path or not os.path.exists(kept_vocals_path):
+                print("❌ Kept vocals file missing")
+                return False
+
+            step_time = time.time() - step_start
+
+            print("\n" + "="*60)
+            print("🎉 AUDIO SEPARATION TEST COMPLETED!")
+            print("="*60)
+            print("📊 RESULTS:")
+            print(f"🎤  Vocals Stem: {vocals_path}")
+            print(f"🎼  Instrumental Stem: {instrumental_path}")
+            print(f"🔒  Kept Vocals: {kept_vocals_path}")
+            print(f"⏱️  Processing Time: {step_time:.2f} seconds")
+            print("\n✅ Audio separation test completed successfully!")
+
+            return True
+
+        except RuntimeError as e:
+            print(f"\n❌ Audio separation test failed: {e}")
+            print("ℹ️ Ensure 'demucs' is installed and models can be downloaded.")
+            return False
+        except Exception as e:
+            print(f"\n❌ Audio separation test unexpected error: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
     
     def run_all_tests(self):
         """Run all available tests"""
@@ -433,7 +514,8 @@ class ModalManagerTests:
         tests = [
             # ("Text-to-Video Talking Character", self.text_to_video_talking_character),  # Commented out due to FFmpeg audio mixing issue
             #("Audio-Video Mixing", self.test_audio_video_mixing),
-            ("All Audio Features", self.test_all_audio_features)
+            #("All Audio Features", self.test_all_audio_features),
+            ("Audio Separation", self.test_audio_seperation)
         ]
         
         passed = 0
@@ -463,5 +545,4 @@ class ModalManagerTests:
 if __name__ == "__main__":
     test_suite = ModalManagerTests()
     test_suite.run_all_tests()
-
 

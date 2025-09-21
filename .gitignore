@@ -3,3 +3,7 @@
 __pycache__/
 *.pyc
 .env
+
+
+storage/audio_dump
+storage/video_dump

@@ -5,10 +5,88 @@ import shutil
 import uuid
 from pathlib import Path
 from pydub import AudioSegment
+from typing import Optional
+import importlib.util as _importlib_util
+
+# Expose the AudioSeparator via AudioTools
+# Note: utils/audio_tools.py (this file) name conflicts with the folder utils/audio_tools/.
+# Use dynamic import from file path to avoid module/package name collision.
+_sep_cls = None
+try:
+    _sep_path = Path(__file__).parent / "audio_tools" / "audio_seperator.py"
+    if _sep_path.exists():
+        _spec = _importlib_util.spec_from_file_location("utils.audio_tools.audio_seperator_mod", str(_sep_path))
+        if _spec and _spec.loader:
+            _mod = _importlib_util.module_from_spec(_spec)
+            _spec.loader.exec_module(_mod)
+            _sep_cls = getattr(_mod, "AudioSeparator", None)
+    else:
+        _sep_cls = None
+except Exception:
+    _sep_cls = None
+
+# Alias for downstream use
+AudioSeparator = _sep_cls
 
 
 class AudioTools:
     """Utility functions for audio processing"""
+
+    # Cached separator instance (lazy)
+    _audio_separator_instance: Optional["AudioSeparator"] = None
+
+    @classmethod
+    def _get_audio_separator(cls) -> "AudioSeparator":
+        """Lazily construct and cache the AudioSeparator using project storage paths.
+
+        Returns:
+            AudioSeparator instance configured to use storage/audio_dump and
+            storage/ai_models/audio_separator
+        """
+        if AudioSeparator is None:
+            raise RuntimeError(
+                "AudioSeparator is not available. Ensure utils/audio_tools/audio_seperator.py exists "
+                "and required dependencies (demucs, pydub) are installed."
+            )
+        if cls._audio_separator_instance is None:
+            # Use our storage conventions automatically
+            temp_dir = str(cls._get_audio_dump_path())
+            models_dir = Path(__file__).parent.parent / "storage" / "ai_models" / "audio_separator"
+            cls._audio_separator_instance = AudioSeparator(temp_dir=temp_dir, models_dir=str(models_dir))
+        return cls._audio_separator_instance
+
+    # Public API wrappers for audio separation
+    # ========================================
+    @classmethod
+    def separate_audio_extract(cls, audio_input: str, filters: list[str]) -> dict[str, str]:
+        """Extract specified stems from an audio file.
+
+        Args:
+            audio_input: Local path or URL to the audio file
+            filters: List of strings indicating which stems to extract
+                     (e.g., ["vocals", "drums"], supports aliases)
+
+        Returns:
+            Dict mapping canonical filter name -> path in storage/audio_dump
+        """
+        separator = cls._get_audio_separator()
+        return separator.separate_extract(audio_input, filters)
+
+    @classmethod
+    def separate_audio_keep(cls, audio_input: str, filters: list[str], output_basename: Optional[str] = None) -> str:
+        """Keep only the specified stems and return a single mixed file.
+
+        Args:
+            audio_input: Local path or URL to the audio file
+            filters: List of strings indicating which stems to keep
+                     (e.g., ["instrumental"] or ["vocals", "drums"]).
+            output_basename: Optional base name prefix for the produced file
+
+        Returns:
+            Path to the mixed audio file in storage/audio_dump
+        """
+        separator = cls._get_audio_separator()
+        return separator.separate_keep(audio_input, filters, output_basename=output_basename)
 
     @staticmethod
     def convert_to_wav(input_audio_path: str, output_audio_path: str) -> None:
