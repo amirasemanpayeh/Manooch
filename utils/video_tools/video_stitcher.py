@@ -62,7 +62,11 @@ class VideoStitcher:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
         
-        self.temp_dir = Path(temp_dir) if temp_dir else Path(tempfile.mkdtemp())
+        # Use consistent storage mechanism - prefer video_dump over random temp
+        if temp_dir:
+            self.temp_dir = Path(temp_dir)
+        else:
+            self.temp_dir = self._get_video_dump_path()
         self.temp_dir.mkdir(exist_ok=True)
         
         # Setup logging using the project's logging pattern
@@ -1060,6 +1064,13 @@ class VideoStitcher:
                     pass
         
         return concatenate_videoclips(result_clips, method='compose')
+
+    def _get_video_dump_path(self) -> Path:
+        """Get the path to the video_dump folder for consistent storage."""
+        current_dir = Path(__file__).parent.parent.parent  # Go up to project root
+        video_dump_path = current_dir / "storage" / "video_dump"
+        video_dump_path.mkdir(parents=True, exist_ok=True)
+        return video_dump_path
 
     def cleanup_temp_files(self, file_paths: List[str]):
         """Clean up temporary video files."""

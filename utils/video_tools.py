@@ -36,6 +36,14 @@ from utils.video_tools.video_text_overlay import VideoTextOverlayManager
 from models.video_engine_models import TextOverlay, TextOverlayProperties, TextOverlayTiming, TextPresentationType, TextOverlayPosition
 
 
+def get_video_dump_path() -> Path:
+    """Get the path to the video_dump folder for consistent storage across all video tools."""
+    current_dir = Path(__file__).parent.parent  # Go up to project root
+    video_dump_path = current_dir / "storage" / "video_dump"
+    video_dump_path.mkdir(parents=True, exist_ok=True)
+    return video_dump_path
+
+
 def get_video_tools_logger(name: str = "VideoTools") -> logging.Logger:
     """Create or fetch a configured logger for video tools components.
 
@@ -129,9 +137,9 @@ def run_all_video_transitions():
             output_filename = f"transition_test_{filename_suffix}.mp4"
             final_output_path = Path("output") / output_filename
             
-            # Initialize VideoTools with unique temp directory for each test
-            temp_dir = tempfile.mkdtemp(prefix=f"video_test_{i}_")
-            tools = VideoTools(output_dir="output", temp_dir=temp_dir)
+            # Initialize VideoTools with consistent storage directory
+            temp_dir = get_video_dump_path()
+            tools = VideoTools(output_dir="output", temp_dir=str(temp_dir))
             
             # Apply the transition - result is path to transition_output.mp4
             result_path = tools.stitcher.stitch_with_transition(
@@ -234,9 +242,9 @@ def run_individual_transition(transition_name: str):
     logger.info("")
     
     try:
-        # Create unique temp directory
-        temp_dir = tempfile.mkdtemp(prefix=f"{transition_name}_test_")
-        tools = VideoTools(output_dir="output", temp_dir=temp_dir)
+        # Use consistent storage directory
+        temp_dir = get_video_dump_path()
+        tools = VideoTools(output_dir="output", temp_dir=str(temp_dir))
         
         # Create output filename
         output_filename = f"single_transition_{transition_name}.mp4"
@@ -286,9 +294,9 @@ def test_overlays():
     logger.info("=" * 60)
     
     try:
-        # Create unique temp directory
-        temp_dir = tempfile.mkdtemp(prefix="overlay_test_")
-        tools = VideoTools(output_dir="output", temp_dir=temp_dir)
+        # Use consistent storage directory
+        temp_dir = get_video_dump_path()
+        tools = VideoTools(output_dir="output", temp_dir=str(temp_dir))
 
         video_url = "https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/57b6e8eb-5c8f-4691-82ce-b33bde620e00.mp4"
         
@@ -487,9 +495,9 @@ def test_audio_synced_overlays():
     logger.info("=" * 55)
     
     try:
-        # Create unique temp directory
-        temp_dir = tempfile.mkdtemp(prefix="audio_overlay_test_")
-        tools = VideoTools(output_dir="output", temp_dir=temp_dir)
+        # Use consistent storage directory
+        temp_dir = get_video_dump_path()
+        tools = VideoTools(output_dir="output", temp_dir=str(temp_dir))
 
         video_url = "https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/57b6e8eb-5c8f-4691-82ce-b33bde620e00.mp4"
         

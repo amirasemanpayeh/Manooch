@@ -52,7 +52,8 @@ class VideoTextOverlayManager:
     def __init__(self):
         """Initialize the VideoTextOverlayManager"""
         self.html2img = Html2Image()
-        self.temp_dir = tempfile.mkdtemp()
+        # Use consistent storage mechanism - video_dump folder
+        self.temp_dir = str(self._get_video_dump_path())
         # Setup logging using the project's logging pattern
         self.logger = get_text_overlay_logger(f"VideoTextOverlay.{id(self)}")
         
@@ -650,18 +651,34 @@ class VideoTextOverlayManager:
 
         return os.path.join(self.temp_dir, f"output_{uuid.uuid4().hex[:8]}.mp4")
     
+    def _get_video_dump_path(self) -> Path:
+        """Get the path to the video_dump folder for consistent storage."""
+        current_dir = Path(__file__).parent.parent.parent  # Go up to project root
+        video_dump_path = current_dir / "storage" / "video_dump"
+        video_dump_path.mkdir(parents=True, exist_ok=True)
+        return video_dump_path
+    
     def _cleanup_temp_files(self):
         """
-        Clean up temporary files.
+        Clean up temporary files in the video_dump directory.
         """
-
         try:
-            shutil.rmtree(self.temp_dir)
+            # Clean up only files we created, not the entire directory
+            temp_path = Path(self.temp_dir)
+            if temp_path.exists():
+                # Remove overlay images and temporary video files
+                for file_pattern in ["overlay*.png", "output_*.mp4", "temp_*.mp4"]:
+                    for temp_file in temp_path.glob(file_pattern):
+                        try:
+                            temp_file.unlink()
+                            self.logger.debug(f"🗑️ Cleaned up: {temp_file.name}")
+                        except Exception as file_error:
+                            self.logger.warning(f"⚠️ Could not clean up {temp_file}: {file_error}")
         except Exception as e:
-            self.logger.warning(f"Warning: Could not clean up temp files: {e}")
+            self.logger.warning(f"⚠️ Warning: Could not clean up temp files: {e}")
         
-        # Create new temp directory for next use
-        self.temp_dir = tempfile.mkdtemp()
+        # Keep using the same video_dump directory - no need to recreate
+        self.temp_dir = str(self._get_video_dump_path())
     
     def close(self):
         """Explicitly close and clean up resources."""
