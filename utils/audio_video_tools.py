@@ -2,10 +2,10 @@ import os
 import tempfile
 import shutil
 import uuid
+import json
+import subprocess
 from pathlib import Path
 from pydub import AudioSegment
-import subprocess
-import json
 
 
 class AudioVideoMixer:
@@ -124,6 +124,169 @@ class AudioVideoMixer:
             for temp_file in video_dump_path.glob(f"*{batch_id}*"):
                 temp_file.unlink(missing_ok=True)
             raise e
+
+    @staticmethod
+    def sync_blend_audio_video(video_data: bytes, 
+                              audio_data: bytes, 
+                              output_filename: str = "synced_video.mp4",
+                              audio_volume: float = 1.0,
+                              output_dir: str = None) -> bytes:
+        """
+        Intelligently sync and blend audio with video by auto-adjusting audio duration.
+        
+        This method automatically detects duration mismatches and adjusts audio speed
+        to perfectly match video length while preserving pitch quality.
+        
+        Args:
+            video_data: Video file data as bytes
+            audio_data: Audio file data as bytes  
+            output_filename: Name of the output file
+            audio_volume: Volume multiplier for the audio (1.0 = original volume)
+            output_dir: Output directory path (uses video_dump if None)
+            
+        Returns:
+            Synced video file as bytes
+            
+        Raises:
+            Exception: If ffmpeg processing fails
+        """
+        
+        print(f"🎵 Starting intelligent audio/video sync-blend process")
+        print(f"📹 Video data size: {len(video_data)} bytes")
+        print(f"🔊 Audio data size: {len(audio_data)} bytes")
+        
+        # Get output directory
+        if output_dir is None:
+            video_dump_path = AudioVideoMixer._get_video_dump_path()
+        else:
+            video_dump_path = Path(output_dir)
+            video_dump_path.mkdir(parents=True, exist_ok=True)
+        
+        # Create temporary files with unique names
+        batch_id = str(uuid.uuid4())[:8]
+        video_temp_path = video_dump_path / f"temp_video_{batch_id}.mp4"
+        audio_temp_path = video_dump_path / f"temp_audio_{batch_id}.wav"
+        
+        # Save data to temporary files
+        with open(video_temp_path, 'wb') as f:
+            f.write(video_data)
+        with open(audio_temp_path, 'wb') as f:
+            f.write(audio_data)
+        
+        try:
+            # Prepare output path
+            output_path = video_dump_path / output_filename
+            
+            # Get video duration first
+            duration_cmd = [
+                'ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', str(video_temp_path)
+            ]
+            duration_result = subprocess.run(duration_cmd, capture_output=True, text=True)
+            
+            if duration_result.returncode == 0:
+                info = json.loads(duration_result.stdout)
+                video_duration = float(info['format']['duration'])
+                print(f"📏 Video duration detected: {video_duration:.3f}s")
+            else:
+                video_duration = None
+                print("⚠️ Could not detect video duration")
+            
+            # Get audio duration for speed adjustment calculation
+            audio_duration_cmd = [
+                'ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', str(audio_temp_path)
+            ]
+            audio_duration_result = subprocess.run(audio_duration_cmd, capture_output=True, text=True)
+            
+            if audio_duration_result.returncode == 0:
+                audio_info = json.loads(audio_duration_result.stdout)
+                audio_duration = float(audio_info['format']['duration'])
+                print(f"🎵 Audio duration detected: {audio_duration:.3f}s")
+            else:
+                audio_duration = None
+                print("⚠️ Could not detect audio duration")
+
+            # Build ffmpeg command with high-quality settings
+            cmd = [
+                'ffmpeg',
+                '-i', str(video_temp_path),  # Input video
+                '-i', str(audio_temp_path),  # Input audio
+                '-c:v', 'copy',              # Copy video stream (no re-encoding)
+                '-c:a', 'aac',               # Encode audio as AAC
+                '-b:a', '192k',              # High-quality audio bitrate
+                '-ar', '48000',              # Standard sample rate for video
+                '-ac', '2',                  # Stereo audio channels
+                '-map', '0:v:0',             # Map video from first input
+                '-map', '1:a:0',             # Map audio from second input
+                '-y',                        # Overwrite output file
+            ]
+            
+            # Build audio filter chain for intelligent sync and processing
+            audio_filters = []
+            
+            # Handle duration mismatch with smart speed adjustment
+            if video_duration and audio_duration and abs(video_duration - audio_duration) > 0.1:
+                speed_factor = audio_duration / video_duration
+                print(f"⚠️ Duration mismatch detected:")
+                print(f"   Video: {video_duration:.2f}s, Audio: {audio_duration:.2f}s")
+                print(f"🎵 Adjusting audio speed by {speed_factor:.3f}x to match video duration")
+                
+                # Use atempo filter for speed adjustment (supports 0.5x to 2.0x)
+                if 0.5 <= speed_factor <= 2.0:
+                    audio_filters.append(f'atempo={speed_factor}')
+                else:
+                    # For extreme speed changes, chain multiple atempo filters
+                    current_factor = speed_factor
+                    while current_factor > 2.0:
+                        audio_filters.append('atempo=2.0')
+                        current_factor /= 2.0
+                    while current_factor < 0.5:
+                        audio_filters.append('atempo=0.5')
+                        current_factor /= 0.5
+                    if abs(current_factor - 1.0) > 0.01:  # Only add if meaningful difference
+                        audio_filters.append(f'atempo={current_factor}')
+            elif video_duration and not audio_duration:
+                # Fallback: pad audio to match video duration if we couldn't detect audio duration
+                audio_filters.append(f'apad=whole_dur={video_duration}')
+                print(f"🎬 Padding audio with silence to match video duration: {video_duration:.3f}s")
+            
+            # Add volume adjustment if needed
+            if audio_volume != 1.0:
+                audio_filters.append(f'volume={audio_volume}')
+                print(f"🔊 Applying audio volume adjustment: {audio_volume}x")
+            
+            # Apply audio filters if any
+            if audio_filters:
+                cmd.insert(-1, '-af')
+                cmd.insert(-1, ','.join(audio_filters))
+            
+            cmd.append(str(output_path))
+            
+            print("🔗 Sync-blending audio and video with ffmpeg...")
+            print(f"💾 Saving synced video to: {output_path}")
+            
+            # Run ffmpeg
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                raise Exception(f"ffmpeg sync-blend failed: {result.stderr}")
+            
+            # Read the output file back as bytes
+            with open(output_path, 'rb') as f:
+                result_bytes = f.read()
+            
+            print(f"✅ Audio/video sync-blend complete!")
+            print(f"   Final video: {output_path}")
+            print(f"   Output size: {len(result_bytes)} bytes ({len(result_bytes) / (1024*1024):.1f} MB)")
+            
+            return result_bytes
+            
+        finally:
+            # Clean up temporary files
+            try:
+                video_temp_path.unlink(missing_ok=True)
+                audio_temp_path.unlink(missing_ok=True)
+            except Exception as e:
+                print(f"⚠️ Warning: Could not clean up temp files: {e}")
 
     @staticmethod
     def _mix_with_ffmpeg(video_path: str, audio_files: list[str], output_path: str) -> bool:

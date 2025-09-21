@@ -7,3 +7,15 @@ pydantic-settings
 python-dotenv
 pydub
 ffmpeg-python
+# Audio processing dependencies for music_tools.py
+numpy>=1.21.0
+soundfile>=0.12.1
+pyloudnorm>=0.1.1
+pedalboard>=0.7.0
+scipy>=1.7.0
+# Optional: Advanced stem separation (large download)
+demucs>=4.0.0
+# Video processing dependencies for video_stitcher.py
+moviepy>=1.0.3
+# Video text overlay dependencies for video_text_overlay.py
+html2image>=2.0.0
