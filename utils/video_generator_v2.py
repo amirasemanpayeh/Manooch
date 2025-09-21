@@ -17,24 +17,27 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Optional, Tuple
-
-# Import external dependencies
-from app.constants.video_engine_prompts import VideoEnginePromptGenerator
-from app.libraries.video_tools import VideoTools
-from app.models.video_engine_models import Character, CharacterVariant, KeyFrame, KeyframeSource, Music, Placement, RenderEngine, Set, SetVariant, Transition, Video, VideoBlock
-from app.utils.modal_manager import ModalManager
-from app.utils.openai_manager import OpenAIManager
-from app.libraries.audio_tools import ChatterboxManager
-from app.libraries.video_audio_mixer import AudioVideoMixer
-from app.libraries.video_stitcher import VideoStitcher
 import io
 import os
+import requests
+
+from typing import List, Optional, Tuple
 from datetime import datetime
 from PIL import Image
-import requests
-from app.utils.supabase_manager import SupabaseManager
-from app.utils.settings_manager import Settings
+
+# Import external dependencies
+from prompts.video_engine_prompts import VideoEnginePromptGenerator
+from models.video_engine_models import Character, CharacterVariant, KeyFrame, KeyframeSource, Music, Placement, RenderEngine, Set, SetVariant, Transition, Video, VideoBlock
+from utils.modal_manager import ModalManager
+from utils.openai_manager import OpenAIManager
+from utils.audio_video_tools import AudioVideoMixer
+from utils.video_tools.video_stitcher import VideoStitcher
+
+from utils.supabase_manager import SupabaseManager
+from utils.settings_manager import Settings
+
+# Note: There is both a module `utils/video_tools.py` and package `utils/video_tools/`.
+# We instantiate stitcher/mixer directly to avoid name collisions.
 
 # Background removal support
 try:
@@ -65,16 +68,14 @@ class VideoGenerator:
         # Initialize external dependencies
         self.modal_manager = ModalManager()
         self.openai_manager = OpenAIManager(api_key=self.settings.openai_api_key)
-        self.chatterbox_manager = ChatterboxManager()
         
         # Initialize video processing tools individually to avoid circular imports
-        self.video_tools: VideoTools = VideoTools()
-        self.video_stitcher: VideoStitcher = self.video_tools.stitcher
-        self.audio_video_mixer: AudioVideoMixer = self.video_tools.mixer
+        self.video_stitcher: VideoStitcher = VideoStitcher()
+        self.audio_video_mixer: AudioVideoMixer = AudioVideoMixer()
 
         # Import here to avoid circular dependency
         try:
-            from app.libraries.video_text_overlay import VideoTextOverlayManager
+            from utils.video_tools.video_text_overlay import VideoTextOverlayManager
             self.text_overlay_manager = VideoTextOverlayManager()
         except ImportError as e:
             print(f"Warning: Could not import VideoTextOverlayManager: {e}")
@@ -465,19 +466,15 @@ class VideoGenerator:
         self.logger.info(f"Generating prompt for character '{character.name}' from image")
         
         try:
-            # Use Florence2Manager for I2T analysis
-            from app.utils.florence2_manager import get_florence2_manager
-            florence_manager = get_florence2_manager()
-            
-            # Generate detailed caption
-            description, status = florence_manager.generate_caption(
+            # Use ModalManager.describe_image for I2T analysis
+            description = self.modal_manager.describe_image(
                 image_url=character.image_url,
-                detail_level="basic",  # Get basic description for characters
+                detail_level="basic",
                 reformat=True
             )
             
-            if status != "success":
-                self.logger.error(f"Failed to analyze character image: {description}")
+            if not description:
+                self.logger.error("Failed to analyze character image")
                 return f"Character {character.name} (image analysis failed)"
             
             # Enhance the description for character context
@@ -545,19 +542,15 @@ class VideoGenerator:
         self.logger.info(f"Generating prompt for set '{set_template.id}' from image")
         
         try:
-            # Use Florence2Manager for I2T analysis
-            from app.utils.florence2_manager import get_florence2_manager
-            florence_manager = get_florence2_manager()
-            
-            # Generate detailed caption for environment
-            description, status = florence_manager.generate_caption(
+            # Use ModalManager.describe_image for I2T environment analysis
+            description = self.modal_manager.describe_image(
                 image_url=set_template.image_url,
-                detail_level="more_detailed",  # Get very detailed description for environments
+                detail_level="more_detailed",
                 reformat=True
             )
             
-            if status != "success":
-                self.logger.error(f"Failed to analyze set image: {description}")
+            if not description:
+                self.logger.error("Failed to analyze set image")
                 return f"Environment scene (image analysis failed)"
             
             # Enhance the description for environment context
@@ -1331,26 +1324,17 @@ class VideoGenerator:
                     voice_sample_url = None
                     self.logger.info("🎵 Using default TTS voice")
                 
-                audio_file_path = self.chatterbox_manager.generate_speech(
+                # Generate speech bytes using ModalManager's voice clone
+                audio_bytes = self.modal_manager.generate_voice_clone(
+                    audio_url=voice_sample_url if voice_sample_url else "",
                     text=shot.narration.script,
-                    audio_prompt_url=voice_sample_url,  # Use the voice sample from narration
-                    exaggeration=0.5,  # Slightly higher for clearer expression
-                    cfg_weight=0.6    # Higher configuration weight for better quality
+                    exaggeration=0.5,
+                    cfg_weight=0.6
                 )
-                
-                if audio_file_path:
-                    # Read the audio file and upload it
-                    with open(audio_file_path, 'rb') as audio_file:
-                        audio_bytes = audio_file.read()
-                    
-                    # Upload the generated audio
+                if audio_bytes:
                     audio_url = self._upload_audio_asset_to_bucket(audio_bytes)
                     shot.narration.audio_url = audio_url
                     self.logger.info(f"✅ Successfully generated and uploaded audio: {audio_url}")
-
-                    # Clean up local audio file
-                    import os
-                    os.remove(audio_file_path)
                 else:
                     self.logger.warning("⚠️ Warning: Failed to generate audio narration")
             except Exception as e:
@@ -1378,8 +1362,8 @@ class VideoGenerator:
                 audio_response.raise_for_status()
                 audio_bytes = audio_response.content
                 
-                # Mix video and audio
-                final_video_bytes = self.audio_video_mixer.mix_audio_video_ffmpeg(
+                # Mix video and audio using sync-blend utility
+                final_video_bytes = self.audio_video_mixer.sync_blend_audio_video(
                     video_data=video_bytes,
                     audio_data=audio_bytes,
                     output_filename=f"final_video_{shot.id}.mp4",
@@ -1423,7 +1407,7 @@ class VideoGenerator:
                 
                 # Polish the music using professional mastering
                 self.logger.info("🎭 Polishing generated music with professional mastering...")
-                from app.libraries.music_tools import polish_audio_bytes
+                from utils.music_tools import polish_audio_bytes
                 
                 polished_music_bytes = polish_audio_bytes(
                     audio_bytes=music_bytes,
@@ -1544,38 +1528,21 @@ class VideoGenerator:
             if video.background_music:
                 video.background_music = self._resolve_background_music(bg_music=video.background_music, forced_duration=video.duration_seconds)
 
-                # Now combine the music with the final video using the proper architecture
+                # Now combine the music with the final video using available mixer
                 if video.generated_video_url and video.background_music.audio_url:
                     self.logger.info("🎵 Combining final video with background music...")
                     
                     try:
-                        # Download the final video
-                        final_video_url = video.generated_video_url  # Use the first (and likely only) generated video
-                        video_response = requests.get(final_video_url, timeout=60)
-                        video_response.raise_for_status()
-                        video_bytes = video_response.content
-
-                        # Download background music
-                        music_response = requests.get(video.background_music.audio_url, timeout=60)
-                        music_response.raise_for_status()
-                        music_bytes = music_response.content
-                        
-                        # Use the AudioVideoMixer architecture for proper mixing
-                        final_video_with_music_bytes = self.audio_video_mixer.mix_narration_with_background_music(
-                            video_data=video_bytes,
-                            background_music_data=music_bytes,
-                            output_filename=f"final_video_with_bgm_{video.id}.mp4",
-                            narration_volume=1.0,    # Keep narration at full volume
-                            background_volume=0.1     # Background music at 10% volume
+                        mixed_path = self.audio_video_mixer.mix_audio_to_video(
+                            video_path=video.generated_video_url,
+                            audio_files=[video.background_music.audio_url],
+                            audio_volumes=[0.1]
                         )
-                        
-                        # Upload the final video with background music
-                        final_video_with_music_url = self._upload_video_asset_to_bucket(final_video_with_music_bytes)
-                        
-                        # Replace the original video with the one that has background music
+                        with open(mixed_path, 'rb') as f:
+                            mixed_bytes = f.read()
+                        final_video_with_music_url = self._upload_video_asset_to_bucket(mixed_bytes)
                         video.generated_video_url = final_video_with_music_url
-                        self.logger.info(f"✅ Successfully mixed narration + background music: {final_video_with_music_url}")
-
+                        self.logger.info(f"✅ Successfully mixed background music: {final_video_with_music_url}")
                     except Exception as e:
                         self.logger.warning(f"⚠️ Warning: Failed to combine video with background music: {e}")
                         self.logger.info("Continuing with video without background music")
@@ -1590,5 +1557,3 @@ class VideoGenerator:
             self.logger.error(f"Failed to process video '{video.title}': {e}")
             raise
     
-
-

@@ -426,6 +426,36 @@ class ModalManagerTests:
             traceback.print_exc()
             return False
         
+
+    def test_audio_effects_speech_videoLayering(self):
+        video_url = "https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/ded814f6-c13d-4397-a779-4a752bb86c7b.mp4?"
+        speech_audio_url = "https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_audios/01c8fc95-d519-4b33-b767-4e71f00c4362.wav?"
+        audio_effects_url = "https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_audios/0ca92e64-9517-4294-abf1-5d06ca89de05.wav"
+        
+        results = AudioTools.separate_audio_extract(
+                audio_effects_url, ["vocals", "instrumental"]
+            )
+        instrumental_path = results.get("instrumental")
+
+
+        # Mix the video with multiple audio layers
+        mixed_video_path = self.audio_video_mixer.mix_audio_to_video(
+            video_path=video_url,
+            audio_files=[speech_audio_url, instrumental_path],
+            audio_volumes=[1.0, 0.1]  # Speech at 100%, background at 10%
+        )
+        
+        print(f"✅ Multi-layer audio mixing completed: {mixed_video_path}")
+        
+        # Upload final video to Supabase
+        print("📤 Uploading final layered video to Supabase...")
+        with open(mixed_video_path, 'rb') as f:
+            final_video_bytes = f.read()
+        
+        final_video_url = self.supabase_manager.upload_processed_asset_video(final_video_bytes)
+        print(f"✅ Final layered video uploaded: {final_video_url}")
+
+        
     def test_audio_seperation(self):
         """Test audio separation using Demucs via AudioTools wrapper.
 
@@ -515,7 +545,8 @@ class ModalManagerTests:
             # ("Text-to-Video Talking Character", self.text_to_video_talking_character),  # Commented out due to FFmpeg audio mixing issue
             #("Audio-Video Mixing", self.test_audio_video_mixing),
             #("All Audio Features", self.test_all_audio_features),
-            ("Audio Separation", self.test_audio_seperation)
+            #("Audio Separation", self.test_audio_seperation)
+            ("Audio effect + speech video layering", self.test_audio_effects_speech_videoLayering)
         ]
         
         passed = 0

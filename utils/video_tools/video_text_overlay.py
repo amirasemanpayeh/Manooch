@@ -6,7 +6,6 @@ Supports multiple presentation types: static, audio-synced, duration-based with 
 """
 
 from typing import List, Tuple
-import tempfile
 import os
 import logging
 import requests

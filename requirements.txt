@@ -19,3 +19,7 @@ demucs>=4.0.0
 moviepy>=1.0.3
 # Video text overlay dependencies for video_text_overlay.py
 html2image>=2.0.0
+# Image Processing (minimal)
+pillow==10.4.0
+rembg==2.0.59
+
