@@ -6,11 +6,27 @@ import uuid
 import json
 import subprocess
 from pathlib import Path
+from typing import Optional
 from pydub import AudioSegment
 
 
 class AudioVideoMixer:
     """Utility functions for audio and video mixing"""
+
+    def __init__(self, output_dir: Optional[str] = None, temp_dir: Optional[str] = None):
+        """Allow optional configuration paths while remaining backwards compatible."""
+        self.output_dir = Path(output_dir) if output_dir else None
+        self.temp_dir = Path(temp_dir) if temp_dir else None
+
+        try:
+            if self.output_dir:
+                self.output_dir.mkdir(parents=True, exist_ok=True)
+            if self.temp_dir:
+                self.temp_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            # Directory creation failure should not block mixer usage; fall back to defaults later.
+            self.output_dir = None
+            self.temp_dir = None
 
     @staticmethod
     def mix_audio_to_video(video_path: str, audio_files: list[str], audio_volumes: list[float], 

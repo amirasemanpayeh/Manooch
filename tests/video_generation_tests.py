@@ -18,8 +18,6 @@ class VideoGeneratorTests:
         self.supabase = SupabaseManager(
             url=settings.supabase_url,
             key=settings.supabase_key,
-            email=settings.supabase_email,
-            password=settings.supabase_password
         )
         set_supabase_manager(self.supabase)
         self.audio_tools = AudioTools()
@@ -37,11 +35,11 @@ class VideoGeneratorTests:
             cast=[],  # No characters for this scenario
             sets=[],
             shots=[VideoBlock(
-                id="shot_balloon_adventure",
+                id="basicc_talking_character_with_bg_audio_effects",
                 storyline_label="Balloon Adventure Intro",
                 render_engine=RenderEngine.LIPSYNC_MOTION,  # Use LIPSYNC_MOTION with I2V
-                duration_seconds=5,
-                fps=16,
+                duration_seconds=5,# Duration is ignored for LIPSYNC_MOTION
+                fps=25,
                 width=720,
                 height=1280,
                 first_keyframe=KeyFrame(
@@ -52,19 +50,21 @@ class VideoGeneratorTests:
                     height=896,
                     set=None,
                     characters=None,
-                    basic_generation_prompt="A beautiful elegant woman with flowing dark hair, wearing a vintage "
-                                "burgundy dress, sitting gracefully in an ornate Victorian parlor with "
-                                "rich wooden furniture and warm golden lighting, portrait style, "
+                    basic_generation_prompt="A beautiful elegant woman with flowing blonde hair, wearing a vintage "
+                                "burgundy dress, sitting gracefully in an ornate Victorian parlor, holding a glass of white wine,"
+                                "with rich wooden furniture and warm golden lighting, portrait style, "
                                 "high quality, cinematic lighting",
                     image_url=None,
                     rendered_frame_by_vid_gen_url=None
                 ),
                 last_keyframe=None,  # Not needed because render engine is LIPSYNC_MOTION
-                video_prompt=("A sophisticated woman speaking elegantly about wine, with natural "
+                video_prompt=("A sophisticated blonde woman, holding a glass of white wine, speaking elegantly about wine, with natural "
                             "facial expressions and subtle head movements, in a Victorian parlor setting"),
                 style="cinematic, elegant",
                 narration=Narration(
-                    id="balloon_adventure_story",
+                    id="wine_tasting_narration",
+                    exaggeration=0.5,
+                    cfg_weight=0.5,
                     script=("The wine is quite delightful, with notes of cherry and oak that dance "
                                 "upon the palate. This vintage has been aged to perfection, offering a "
                                 "rich and complex flavor profile that would complement any elegant evening."),

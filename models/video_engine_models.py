@@ -367,6 +367,8 @@ class CharacterVariant:
     image_url: Optional[str] = None # The URL of the generated image for the variant or the uploaded image by the user
 
     script: str = "" # Characters script to be spoken
+    exaggeration: float = 0.5
+    cfg_weight: float = 0.5
     audio_url: Optional[str] = None # The URL of the audio of the character spoken script
     audio_padded_url: Optional[str] = None # The URL of the padded audio for the character spoken script with other characters involved.
 
@@ -382,6 +384,8 @@ class Narration:
     id: str
     script: str
     voice_sample_url: str
+    exaggeration: float = 0.5
+    cfg_weight: float = 0.5
     audio_url: Optional[str] = None
 
 @dataclass

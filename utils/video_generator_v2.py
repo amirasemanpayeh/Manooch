@@ -1361,7 +1361,7 @@ class VideoGenerator:
                 prompt=shot.video_prompt,
                 width=shot.width,
                 height=shot.height,
-                frames=shot.frame_count(),  # upper limit; audio dictates final length
+                frames=AudioTools.get_audio_files_total_duration(audio_files) * shot.fps,  # upper limit; audio dictates final length
                 fps=shot.fps
             )
 
@@ -1370,7 +1370,6 @@ class VideoGenerator:
         if video_bytes:
             # Upload the generated video
             video_url = self._upload_video_asset_to_bucket(video_bytes)
-            shot.generated_video_clip = video_url
             shot.generated_video_clip_raw = video_url
             self.logger.info(f"Successfully generated and uploaded video: {video_url}")
 
@@ -1390,7 +1389,7 @@ class VideoGenerator:
     def _apply_overlays(self, shot: VideoBlock) -> Optional[VideoBlock]:
         """Apply text overlays (static/duration/progressive)."""
         # Process text overlays if any are specified
-        base_video_url = shot.generated_video_clip_raw or shot.generated_video_clip
+        base_video_url = shot.generated_video_clip_raw
         if shot.overlays and base_video_url:
             self.logger.info(f"🎨 Processing {len(shot.overlays)} text overlays for video block")
 
@@ -1407,7 +1406,6 @@ class VideoGenerator:
                         # Upload the video with overlays
                         overlayed_video_url = self._upload_video_asset_to_bucket(video_with_overlays_bytes)
                         shot.generated_video_clip_with_overlays = overlayed_video_url
-                        shot.generated_video_clip = overlayed_video_url  # maintain backward compatibility
                         self.logger.info(f"✅ Successfully added text overlays and uploaded: {overlayed_video_url}")
                     else:
                         self.logger.warning("⚠️ Warning: Failed to generate video with overlays, keeping original video")
@@ -1426,8 +1424,6 @@ class VideoGenerator:
         if not shot.generated_video_clip_with_overlays:
             if base_video_url:
                 shot.generated_video_clip_with_overlays = base_video_url
-            else:
-                shot.generated_video_clip_with_overlays = shot.generated_video_clip
 
         return shot
 
@@ -1451,8 +1447,8 @@ class VideoGenerator:
                 audio_bytes = self.modal_manager.generate_voice_clone(
                     audio_url=voice_sample_url if voice_sample_url else "",
                     text=shot.narration.script,
-                    exaggeration=0.5,
-                    cfg_weight=0.6
+                    exaggeration=shot.narration.exaggeration if shot.narration.exaggeration else 0.5,
+                    cfg_weight=shot.narration.cfg_weight if shot.narration.cfg_weight else 0.5
                 )
                 if audio_bytes:
                     audio_url = self._upload_audio_asset_to_bucket(audio_bytes)
@@ -1479,7 +1475,7 @@ class VideoGenerator:
 
                 # Generate audio effects using mmaudio
                 effects_audio_bytes = self.modal_manager.generate_audio_effects(
-                    video_url=shot.generated_video_clip,
+                    video_url=shot.generated_video_clip_raw,
                     prompt=shot.bg_audio_effects.prompt,
                     duration=shot.duration_seconds
                 )
@@ -1544,8 +1540,8 @@ class VideoGenerator:
                     audio_bytes = self.modal_manager.generate_voice_clone(
                         audio_url=voice_sample_url or "",
                         text=script,
-                        exaggeration=0.5,
-                        cfg_weight=0.6,
+                        exaggeration=getattr(cv, 'exaggeration', 0.5),
+                        cfg_weight=getattr(cv, 'cfg_weight', 0.5),
                     )
                 except Exception as e:
                     self.logger.warning(f"Voice clone failed for variant {cv.id}: {e}")
@@ -1612,7 +1608,7 @@ class VideoGenerator:
         """
         try:
             # Determine base video to mix onto: overlays result preferred, else raw
-            base_video = shot.generated_video_clip_with_overlays or shot.generated_video_clip_raw or shot.generated_video_clip
+            base_video = shot.generated_video_clip_with_overlays or shot.generated_video_clip_raw
             if not base_video:
                 return shot
 
@@ -1640,7 +1636,7 @@ class VideoGenerator:
             # Background audio effects (SFX), quieter
             if shot.bg_audio_effects and shot.bg_audio_effects.audio_url:
                 audio_files.append(shot.bg_audio_effects.audio_url)
-                audio_vols.append(0.3)
+                audio_vols.append(0.2)
 
             if not audio_files:
                 # No audio to add; carry forward overlays video
@@ -1667,7 +1663,7 @@ class VideoGenerator:
             self.logger.warning(f"⚠️ Audio blending failed: {e}")
             # Fallback: retain overlays-only video
             shot.generated_video_clip_with_audio_and_overlays = (
-                shot.generated_video_clip_with_overlays or shot.generated_video_clip_raw or shot.generated_video_clip
+                shot.generated_video_clip_with_overlays or shot.generated_video_clip_raw
             )
             shot.generated_video_clip_final = shot.generated_video_clip_with_audio_and_overlays
         return shot
@@ -1773,14 +1769,15 @@ class VideoGenerator:
                 # For lip-sync motion, generate character speech and padded audios first because they are needed for video generation
                 if shot.render_engine == RenderEngine.LIPSYNC_MOTION:
                     shot = self._create_characters_speech_audio(video, shot)
+                                
+                # Create narration audio if needed
+                shot = self._create_narration_audio(shot)
 
                 # Generate the video for the shot based on the render engine and keyframes
                 shot = self._render_video(shot, video)
 
                 # Create background audio effect if needed, it needs to happen after rendering the video and before overlays are added
-                shot = self._create_bg_audio_effects(shot)                
-                # Create narration audio if needed
-                shot = self._create_narration_audio(shot)
+                shot = self._create_bg_audio_effects(shot)
 
                 # Apply text overlays if any
                 shot = self._apply_overlays(shot)

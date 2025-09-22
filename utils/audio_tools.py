@@ -137,6 +137,50 @@ class AudioTools:
             rate = wf.getframerate()
             duration = frames / float(rate)
         return duration
+    
+
+    @staticmethod
+    def get_audio_files_total_duration(audio_files: list[str]) -> float:
+        """Get the total duration of a list of audio files in seconds."""
+        import requests
+        
+        total_duration = 0.0
+        audio_dump_path = AudioTools._get_audio_dump_path()
+        
+        for audio_path in audio_files:
+            if audio_path.startswith(('http://', 'https://')):
+                # Handle URL case - download temporarily to get duration
+                temp_download = audio_dump_path / f"temp_duration_check_{uuid.uuid4()}.tmp"
+                try:
+                    response = requests.get(audio_path)
+                    response.raise_for_status()
+                    with open(temp_download, 'wb') as f:
+                        f.write(response.content)
+                    
+                    # Convert to WAV to get duration
+                    temp_wav = audio_dump_path / f"temp_duration_wav_{uuid.uuid4()}.wav"
+                    AudioTools.convert_to_wav(str(temp_download), str(temp_wav))
+                    
+                    # Get duration
+                    duration = AudioTools.get_audio_duration(str(temp_wav))
+                    total_duration += duration
+                    
+                    # Clean up temp files
+                    temp_download.unlink()
+                    temp_wav.unlink()
+                    
+                except Exception as e:
+                    # Clean up temp files if they exist
+                    if temp_download.exists():
+                        temp_download.unlink()
+                    if 'temp_wav' in locals() and temp_wav.exists():
+                        temp_wav.unlink()
+                    raise e
+            else:
+                # Handle local file case
+                total_duration += AudioTools.get_audio_duration(audio_path)
+        
+        return total_duration
 
 
     @staticmethod
