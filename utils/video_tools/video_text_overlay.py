@@ -448,9 +448,135 @@ class VideoTextOverlayManager:
         except ffmpeg.Error as e:
             self.logger.error(f"❌ FFmpeg error: {e.stderr.decode() if e.stderr else 'Unknown error'}")
             raise
-        
+
         return output_path
-    
+
+    def _handle_sliding_window_overlay(
+        self,
+        video_path: str,
+        overlay: TextOverlay,
+        width: int,
+        height: int,
+        fps: float,
+        duration: float,
+        window_size: int,
+    ) -> str:
+        """Render an overlay that shows a rolling window of text during the reveal."""
+        self.logger.info(
+            f"📝 Adding sliding window overlay (size={window_size}): '{overlay.text[:30]}...'"
+        )
+
+        timing = overlay.properties.timing
+        start_time = timing.start_time_seconds
+        reveal_unit = timing.reveal_unit
+
+        window_size = max(int(window_size or 1), 1)
+
+        remaining_video_time = max(duration - start_time, 0.5)
+        if timing.duration_seconds and timing.duration_seconds > 0:
+            available_time = min(timing.duration_seconds, remaining_video_time)
+        else:
+            available_time = remaining_video_time
+
+        if reveal_unit == "character":
+            text_units = list(overlay.text)
+        elif reveal_unit == "line":
+            text_units = overlay.text.split('\n')
+        else:
+            text_units = overlay.text.split()
+
+        num_units = len(text_units)
+        if num_units == 0:
+            return video_path
+
+        reveal_time = max(available_time - 0.2, 0.5)
+        min_time_per_frame = 1.0 / fps
+        max_steps_available = max(int(reveal_time / min_time_per_frame), 1)
+
+        if num_units <= max_steps_available:
+            units_per_step = 1
+            num_steps = num_units
+        else:
+            units_per_step = int(np.ceil(num_units / max_steps_available))
+            num_steps = int(np.ceil(num_units / units_per_step))
+            self.logger.info(
+                f"🔧 Adaptive window grouping: advancing {units_per_step} {reveal_unit}(s) per step"
+            )
+
+        time_per_step = max(reveal_time / num_steps, min_time_per_frame)
+
+        overlay_images = []
+        for step in range(num_steps):
+            units_to_include = min((step + 1) * units_per_step, num_units)
+            window_start = max(units_to_include - window_size, 0)
+            window_units = text_units[window_start:units_to_include]
+
+            if reveal_unit == "character":
+                partial_text = ''.join(window_units)
+            elif reveal_unit == "line":
+                partial_text = '\n'.join(window_units)
+            else:
+                partial_text = ' '.join(window_units)
+
+            if not partial_text:
+                continue
+
+            partial_overlay = TextOverlay(
+                text=partial_text,
+                position=overlay.position,
+                properties=overlay.properties
+            )
+
+            overlay_html = self._generate_overlay_html(partial_overlay, width, height)
+            image_path = self._render_html_to_image(
+                overlay_html, width, height, suffix=f"_window_{step}"
+            )
+            show_time = start_time + step * time_per_step
+            overlay_images.append((image_path, show_time))
+
+        if not overlay_images:
+            return video_path
+
+        output_path = self._get_temp_video_path()
+
+        try:
+            video_input = ffmpeg.input(video_path)
+            current_video = video_input
+
+            for i, (image_path, show_time) in enumerate(overlay_images):
+                if i + 1 < len(overlay_images):
+                    next_show_time = overlay_images[i + 1][1]
+                else:
+                    next_show_time = start_time + available_time
+
+                overlay_input = ffmpeg.input(image_path)
+                current_video = ffmpeg.filter(
+                    [current_video, overlay_input],
+                    'overlay',
+                    x=0, y=0,
+                    enable=f'between(t,{show_time},{next_show_time})'
+                )
+
+            has_audio = self._has_audio_stream(video_path)
+
+            if has_audio:
+                ffmpeg.output(
+                    current_video, video_input['a'], output_path,
+                    vcodec='libx264',
+                    acodec='copy'
+                ).overwrite_output().run(capture_stdout=True, capture_stderr=True)
+            else:
+                ffmpeg.output(
+                    current_video, output_path,
+                    vcodec='libx264'
+                ).overwrite_output().run(capture_stdout=True, capture_stderr=True)
+
+        except ffmpeg.Error as e:
+            self.logger.error(f"❌ FFmpeg error: {e.stderr.decode() if e.stderr else 'Unknown error'}")
+            raise
+
+        return output_path
+
     def _generate_overlay_html(self, overlay: TextOverlay, video_width: int, video_height: int) -> str:
         """
         Generate HTML/CSS for a text overlay.
@@ -476,6 +602,11 @@ class VideoTextOverlayManager:
             word-wrap: break-word;
         """
         
+        body_height = int(video_height)
+        body_width = int(video_width)
+        overlay_x = int(round(x))
+        overlay_y = int(round(y))
+        line_height = max(overlay.properties.font_size * 1.2, overlay.properties.font_size + 2)
         html = f"""
         <!DOCTYPE html>
         <html>
@@ -485,21 +616,41 @@ class VideoTextOverlayManager:
                 body {{
                     margin: 0;
                     padding: 0;
+                    width: {body_width}px;
+                    height: {body_height}px;
+                    background: transparent;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }}
+                .canvas {{
+                    position: relative;
                     width: {video_width}px;
                     height: {video_height}px;
-                    background: transparent;
                 }}
                 .overlay {{
                     {styles}
+                    overflow-wrap: anywhere;
+                    display: inline-block;
+                    padding: {overlay.properties.padding}px;
+                    border-radius: {overlay.properties.border_radius}px;
+                    background-color: {overlay.properties.background_color};
+                    position: absolute;
+                    left: {overlay_x}px;
+                    top: {overlay_y}px;
+                    transform: translate(-50%, -50%);
+                    line-height: {line_height}px;
                 }}
             </style>
         </head>
         <body>
-            <div class="overlay">{overlay.text}</div>
+            <div class="canvas">
+                <div class="overlay">{overlay.text}</div>
+            </div>
         </body>
         </html>
         """
-        
+
         return html
     
     def _generate_animated_overlay_html(self, overlay: TextOverlay, video_width: int, video_height: int) -> str:
@@ -665,8 +816,8 @@ class VideoTextOverlayManager:
             # Clean up only files we created, not the entire directory
             temp_path = Path(self.temp_dir)
             if temp_path.exists():
-                # Remove overlay images and temporary video files
-                for file_pattern in ["overlay*.png", "output_*.mp4", "temp_*.mp4"]:
+                # Remove overlay images and temporary helper videos (keep final outputs for inspection)
+                for file_pattern in ["overlay*.png", "temp_*.mp4"]:
                     for temp_file in temp_path.glob(file_pattern):
                         try:
                             temp_file.unlink()

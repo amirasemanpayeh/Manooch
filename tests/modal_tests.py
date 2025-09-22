@@ -1,7 +1,14 @@
+import shutil
 import sys
 import os
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import requests
+
+from utils.video_tools.video_text_overlay import VideoTextOverlayManager
+
+from models.video_engine_models import TextOverlay, TextOverlayPosition, TextOverlayProperties, TextOverlayTiming, TextPresentationAnimationType, TextPresentationType
 from utils.modal_manager import ModalManager
 from utils.supabase_manager import SupabaseManager, set_supabase_manager
 from utils.audio_video_tools import AudioVideoMixer
@@ -556,6 +563,62 @@ class ModalManagerTests:
                 except Exception as e:
                     print(f"Failed to upload padded narration audio: {e}")
 
+    def test_sliding_overlay(self):
+        overlayManager = VideoTextOverlayManager()
+        VIDEO_URL = "https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/189cfa67-5b92-4263-ba99-d132dbec7c7a.mp4?"
+        # _generate_overlay_html
+        overlay = TextOverlay(
+            text ="The wine is quite delightful, with notes of cherry and oak that dance "
+                            "upon the palate."
+                            "Fuck off you stupid bitch",
+            position=TextOverlayPosition.BOTTOM,
+            properties=TextOverlayProperties(
+                font_family="Arial",
+                font_size=24,
+                color="#FABB32",
+                background_color="transparent",
+                padding=0,
+                border_radius=0,
+                presentation_type=TextPresentationType.STATIC_OVERLAY,
+                presentation_animation_type=TextPresentationAnimationType.NONE,
+                timing=TextOverlayTiming(
+                    start_time_seconds=0,
+                    duration_seconds=12
+                )
+            )
+        )
+
+        from pathlib import Path
+        current_dir = Path(__file__).parent.parent.parent  # Go up to project root
+        video_dump_path = current_dir / "storage" / "video_dump"
+        video_dump_path.mkdir(parents=True, exist_ok=True)
+
+         # Check if it's a local file path
+        if os.path.exists(VIDEO_URL) or VIDEO_URL.startswith('/'):
+            # It's a local file path, copy to temp directory
+            temp_path = os.path.join(video_dump_path, "input_video.mp4")
+            shutil.copy2(VIDEO_URL, temp_path)
+        else:
+            # It's a URL, download it
+            temp_path = os.path.join(video_dump_path, "input_video.mp4")
+
+            response = requests.get(VIDEO_URL, stream=True)
+            response.raise_for_status()
+            
+            with open(temp_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            processed_video_path = overlayManager._handle_sliding_window_overlay(
+                video_path=temp_path,
+                overlay=overlay,
+                width=537,height=896,
+                fps=25,duration=9,
+                window_size=3
+            )
+            print(f"Processed video with sliding overlay: {processed_video_path}")
+            return True
+            #temp_path
+
     def run_all_tests(self):
         """Run all available tests"""
         print("🚀 Starting Modal Manager Tests...")
@@ -566,7 +629,8 @@ class ModalManagerTests:
             #("All Audio Features", self.test_all_audio_features),
             #("Audio Separation", self.test_audio_seperation)
             #("Audio effect + speech video layering", self.test_audio_effects_speech_videoLayering)
-            ("Audio sync with silent padding", self.test_audio_sync_with_silent_padding)
+            #("Audio sync with silent padding", self.test_audio_sync_with_silent_padding)
+            ("Sliding Overlay Test", self.test_sliding_overlay)
         ]
         
         passed = 0
@@ -596,4 +660,3 @@ class ModalManagerTests:
 if __name__ == "__main__":
     test_suite = ModalManagerTests()
     test_suite.run_all_tests()
-
