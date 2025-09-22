@@ -27,7 +27,7 @@ from PIL import Image
 
 # Import external dependencies
 from prompts.video_engine_prompts import VideoEnginePromptGenerator
-from models.video_engine_models import Character, CharacterVariant, KeyFrame, KeyframeSource, Music, Placement, RenderEngine, Set, SetVariant, Transition, Video, VideoBlock
+from models.video_engine_models import Character, CharacterVariant, KeyFrame, KeyframeSource, Music, Narration, Placement, RenderEngine, Set, SetVariant, Transition, Video, VideoBlock
 from utils.audio_tools import AudioTools
 from utils.modal_manager import ModalManager
 from utils.openai_manager import OpenAIManager
@@ -1347,8 +1347,13 @@ class VideoGenerator:
                         audio_files.append(cv.audio_padded_url)
                         if len(audio_files) >= 2:
                             break
-                if not audio_files and shot.narration and shot.narration.audio_url:
-                    audio_files.append(shot.narration.audio_url)
+                if not audio_files:
+                    for narration in self._collect_shot_narrations(shot):
+                        source = getattr(narration, 'audio_padded_url', None) or getattr(narration, 'audio_url', None)
+                        if source:
+                            audio_files.append(source)
+                        if len(audio_files) >= 2:
+                            break
             except Exception:
                 pass
 
@@ -1427,38 +1432,111 @@ class VideoGenerator:
 
         return shot
 
-    def _create_narration_audio(self, shot: VideoBlock) -> Optional[VideoBlock]:
-        if (shot.narration and not shot.narration.audio_url) and shot.narration.script:
-            # Generate the audio using chatterbox
-            self.logger.info(f"🎤 Generating audio narration for script: {shot.narration.script[:50]}...")
+    def _collect_shot_narrations(self, shot: VideoBlock) -> List[Narration]:
+        """Return available narrations for the shot."""
+        return [n for n in (shot.narrations or []) if n]
 
-            # TODO: Implement audio generation config class to define the audio generation parameters including sample, exaggeration, etc.
-            # Use voice sample from narration if provided, otherwise use default parameters
+    def _create_narration_audio(self, shot: VideoBlock) -> Optional[VideoBlock]:
+        narrations = self._collect_shot_narrations(shot)
+        if not narrations:
+            return shot
+
+        if shot.render_engine == RenderEngine.LIPSYNC_MOTION:
+            target_narrations = narrations[:2]
+        else:
+            target_narrations = narrations[:1]
+
+        for idx, narration in enumerate(target_narrations):
+            script = getattr(narration, "script", "")
+            if not script or not script.strip():
+                continue
+
+            existing_audio = getattr(narration, "audio_url", None)
+            if existing_audio:
+                # Legacy clips may already exist; only mirror to padded for non lip-sync shots
+                if (
+                    shot.render_engine != RenderEngine.LIPSYNC_MOTION
+                    and not getattr(narration, "audio_padded_url", None)
+                ):
+                    narration.audio_padded_url = existing_audio
+                continue  # Already generated
+
+            # Generate narration speech with requested voice settings, then upload once complete
+            self.logger.info(
+                f"🎤 Generating narration audio {idx + 1}/{len(target_narrations)} for script: {script[:50]}..."
+            )
+
             try:
                 # Get voice sample URL from narration, fallback to None for default voice
-                voice_sample_url = getattr(shot.narration, 'voice_sample_url', None)
+                voice_sample_url = getattr(narration, 'voice_sample_url', None)
                 if voice_sample_url and voice_sample_url.strip():
                     self.logger.info(f"🎵 Using voice sample: {voice_sample_url}")
                 else:
                     voice_sample_url = None
                     self.logger.info("🎵 Using default TTS voice")
-                
+
+                exaggeration = narration.exaggeration if narration.exaggeration is not None else 0.5
+                cfg_weight = narration.cfg_weight if narration.cfg_weight is not None else 0.5
+
                 # Generate speech bytes using ModalManager's voice clone
                 audio_bytes = self.modal_manager.generate_voice_clone(
                     audio_url=voice_sample_url if voice_sample_url else "",
-                    text=shot.narration.script,
-                    exaggeration=shot.narration.exaggeration if shot.narration.exaggeration else 0.5,
-                    cfg_weight=shot.narration.cfg_weight if shot.narration.cfg_weight else 0.5
+                    text=script,
+                    exaggeration=exaggeration,
+                    cfg_weight=cfg_weight,
                 )
                 if audio_bytes:
                     audio_url = self._upload_audio_asset_to_bucket(audio_bytes)
-                    shot.narration.audio_url = audio_url
+                    narration.audio_url = audio_url
+                    # For lip-sync shots we defer padding until after multi-speaker sync
+                    narration.audio_padded_url = (
+                        audio_url
+                        if shot.render_engine != RenderEngine.LIPSYNC_MOTION
+                        else None
+                    )
                     self.logger.info(f"✅ Successfully generated and uploaded audio: {audio_url}")
                 else:
                     self.logger.warning("⚠️ Warning: Failed to generate audio narration")
             except Exception as e:
                 self.logger.warning(f"⚠️ Warning: Audio generation failed: {e}")
                 # Continue processing without audio
+
+        # Post-process narrations for lip-sync: create padded audio when multiple are present
+        available_narrations = [n for n in narrations if getattr(n, "audio_url", None)]
+
+        if shot.render_engine == RenderEngine.LIPSYNC_MOTION and len(available_narrations) >= 2:
+            # Only regenerate padding if we don't already have it for the selected narrations
+            selected = available_narrations[:2]
+            if all(getattr(n, "audio_padded_url", None) for n in selected):
+                return shot
+
+            try:
+                # Align narrations so multiple speakers start together before lip-sync rendering
+                audio_urls = [n.audio_url for n in selected]
+                synced_paths = AudioTools.sync_multi_talk_audios(audio_urls)
+
+                if len(synced_paths) != len(selected):
+                    self.logger.warning("sync_multi_talk_audios returned unexpected count; using original narrations")
+                else:
+                    for narration, local_path in zip(selected, synced_paths):
+                        try:
+                            with open(local_path, 'rb') as f:
+                                padded_bytes = f.read()
+                            padded_url = self._upload_audio_asset_to_bucket(padded_bytes)
+                            narration.audio_padded_url = padded_url
+                            self.logger.info(f"Uploaded padded narration audio: {padded_url}")
+                        except Exception as e:
+                            self.logger.warning(f"Failed to upload padded narration audio: {e}")
+            except Exception as e:
+                self.logger.warning(f"Narration padding failed: {e}")
+                for narration in selected:
+                    if narration.audio_url:
+                        narration.audio_padded_url = narration.audio_url
+        else:
+            # Single narration or non lip-sync renders: ensure padded URL mirrors audio_url
+            for narration in available_narrations:
+                if not getattr(narration, "audio_padded_url", None):
+                    narration.audio_padded_url = narration.audio_url
         return shot
     
     def _create_bg_audio_effects(self, shot: VideoBlock) -> Optional[VideoBlock]:
@@ -1632,11 +1710,15 @@ class VideoGenerator:
             except Exception:
                 pass
 
-            # Narration (if present)
-            if shot.narration and shot.narration.audio_url:
-                audio_files.append(shot.narration.audio_url)
-                audio_vols.append(1.0)
-                audio_keep_lengths.append(preserve_primary_audio)
+            # Narration layers
+            narration_sources = self._collect_shot_narrations(shot)
+            narration_limit = 2 if preserve_primary_audio else 1
+            for narration in narration_sources[:narration_limit]:
+                source = getattr(narration, 'audio_padded_url', None) or getattr(narration, 'audio_url', None)
+                if source:
+                    audio_files.append(source)
+                    audio_vols.append(1.0)
+                    audio_keep_lengths.append(preserve_primary_audio)
 
             # Background audio effects (SFX), quieter
             if shot.bg_audio_effects and shot.bg_audio_effects.audio_url:

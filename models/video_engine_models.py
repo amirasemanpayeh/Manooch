@@ -387,6 +387,7 @@ class Narration:
     exaggeration: float = 0.5
     cfg_weight: float = 0.5
     audio_url: Optional[str] = None
+    audio_padded_url: Optional[str] = None
 
 @dataclass
 class Music:
@@ -477,9 +478,9 @@ class VideoBlock:
     video_prompt: str = ""         # Motion / camera / action description (I2V / FF+LF hints)
     style: str = "default"
 
-    narration: Optional[Narration] = None    # Optional narration (also provides audio for LIPSYNC_MOTION)
-    bg_audio_effects: BackgroundAudioEffects = field(default_factory=BackgroundAudioEffects)
-    overlays: List[TextOverlay] = field(default_factory=list)  # Overlays
+    narrations: Optional[List[Narration]] = None  # Optional narration (also provides audio for LIPSYNC_MOTION)
+    bg_audio_effects: Optional[BackgroundAudioEffects] = None
+    overlays: Optional[List[TextOverlay]] = None  # Overlays
 
     generated_video_clip_raw: Optional[str] = None    # Engine outputs / caches (populated by the engine)
     generated_video_clip_with_overlays: Optional[str] = None    # Engine outputs / caches (populated by the engine)

@@ -536,7 +536,26 @@ class ModalManagerTests:
             import traceback
             traceback.print_exc()
             return False
-    
+        
+    def test_audio_sync_with_silent_padding(self):
+        AUDIO_1_URL = "https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_audios/f8e16f0e-c2b5-4c9e-bb44-61d09e9f2b26.wav?"
+        AUDIO_2_URL = "https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_audios/260eec0b-f5f4-4c18-811c-27ba8e75d637.wav?"
+
+        audio_urls = [AUDIO_1_URL, AUDIO_2_URL]
+        synced_paths = AudioTools.sync_multi_talk_audios(audio_urls)
+
+        if len(synced_paths) != len(audio_urls):
+            print("sync_multi_talk_audios returned unexpected count; using original narrations")
+        else:
+            for path in synced_paths:
+                try:
+                    with open(path, 'rb') as f:
+                        padded_bytes = f.read()
+                    padded_url = self.supabase_manager.upload_processed_asset_audio(padded_bytes)
+                    print(f"Uploaded padded narration audio: {padded_url}")
+                except Exception as e:
+                    print(f"Failed to upload padded narration audio: {e}")
+
     def run_all_tests(self):
         """Run all available tests"""
         print("🚀 Starting Modal Manager Tests...")
@@ -546,7 +565,8 @@ class ModalManagerTests:
             #("Audio-Video Mixing", self.test_audio_video_mixing),
             #("All Audio Features", self.test_all_audio_features),
             #("Audio Separation", self.test_audio_seperation)
-            ("Audio effect + speech video layering", self.test_audio_effects_speech_videoLayering)
+            #("Audio effect + speech video layering", self.test_audio_effects_speech_videoLayering)
+            ("Audio sync with silent padding", self.test_audio_sync_with_silent_padding)
         ]
         
         passed = 0

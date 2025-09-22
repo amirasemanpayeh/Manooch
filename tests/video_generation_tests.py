@@ -61,16 +61,20 @@ class VideoGeneratorTests:
                 video_prompt=("A sophisticated ginger woman, holding a glass of white wine, speaking elegantly about wine, with natural "
                             "facial expressions and subtle head movements, in a Victorian parlor setting"),
                 style="cinematic, elegant",
-                narration=Narration(
-                    id="wine_tasting_narration",
-                    exaggeration=0.5,
-                    cfg_weight=0.5,
-                    script=("The wine is quite delightful, with notes of cherry and oak that dance "
-                                "upon the palate. This vintage has been aged to perfection, offering a "
-                                "rich and complex flavor profile that would complement any elegant evening."),
-                    voice_sample_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/audio_samples/219777__madamvicious__the-wine-is-quite-delightful-posh-woman.wav",
-                    audio_url=None,
-                ),
+                narrations=[
+                    Narration(
+                        id="wine_tasting_narration",
+                        exaggeration=0.5,
+                        cfg_weight=0.5,
+                        script=(
+                            "The wine is quite delightful, with notes of cherry and oak that dance "
+                            "upon the palate. This vintage has been aged to perfection, offering a "
+                            "rich and complex flavor profile that would complement any elegant evening."
+                        ),
+                        voice_sample_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/audio_samples/219777__madamvicious__the-wine-is-quite-delightful-posh-woman.wav",
+                        audio_url=None,
+                    )
+                ],
                 overlays=None,
                 bg_audio_effects=BackgroundAudioEffects(
                     is_enabled=True,
@@ -90,17 +94,88 @@ class VideoGeneratorTests:
         processed_video = self.video_generator.process_video(video)
 
         print(f"Processed video: {processed_video}")
+        return True
+    
+    def test_simple_two_characters_conversation_with_bg_effects(self) -> bool:
+        # This test is to create two talking character video without using the characters feature
+        # Create video for scenario 1
+        video = Video(
+            id="scenario_1_balloon_adventure",
+            title="Epic Tale of Two Characters",
+            description="Testing two characters talking with background audio effects",
+            style="cinematic",
+            cast=[],  # No characters for this scenario
+            sets=[],
+            shots=[VideoBlock(
+                id="basic_two_talking_character_with_bg_audio_effects",
+                storyline_label="Test two talking characters",
+                render_engine=RenderEngine.LIPSYNC_MOTION,  # Use LIPSYNC_MOTION with I2V
+                duration_seconds=5,# Duration is ignored for LIPSYNC_MOTION
+                fps=25,
+                width=537,
+                height=896,
+                first_keyframe=KeyFrame(
+                    source=KeyframeSource.GENERATE,
+                    linked_source_id=None,
+                    supplied_image_url=None,
+                    width=537,
+                    height=896,
+                    set=None,
+                    characters=None,
+                    basic_generation_prompt="A beautiful elegant woman with flowing ginger hair, wearing a vintage "
+                                "burgundy dress, sitting gracefully in an ornate Victorian parlor, holding a glass of white wine,"
+                                "with rich wooden furniture and warm golden lighting,"
+                                "A monkey in a suit, standing next to her on the right side, fanning her with a large ornate fan, looking attentive and respectful,"
+                                "portrait style, high quality, cinematic lighting",
+                    image_url=None,
+                    rendered_frame_by_vid_gen_url=None
+                ),
+                last_keyframe=None,  # Not needed because render engine is LIPSYNC_MOTION
+                video_prompt=("A sophisticated ginger woman, holding a glass of white wine, speaking elegantly about wine, "
+                            "A respectful monkey standing on her right hands side, speaking with passion, with natural "
+                            "facial expressions and subtle head movements, in a Victorian parlor setting"),
+                style="cinematic, elegant",
+                narrations=[
+                    Narration(
+                        id="wine_tasting_narration",
+                        exaggeration=0.5,
+                        cfg_weight=0.5,
+                        script=(
+                            "The wine is quite delightful, with notes of cherry and oak that dance "
+                            "upon the palate."
+                        ),
+                        voice_sample_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/audio_samples/219777__madamvicious__the-wine-is-quite-delightful-posh-woman.wav",
+                        audio_url=None,
+                    ),                    
+                    Narration(
+                        id="buttler_narration",
+                        exaggeration=0.5,
+                        cfg_weight=0.5,
+                        script=(
+                            "Fuck off you stupid bitch"
+                        ),
+                        voice_sample_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/audio_samples/what-can-i-do-for-you-npc-british-male-99751.mp3",
+                        audio_url=None,
+                    )
+                ],
+                overlays=None,
+                bg_audio_effects=BackgroundAudioEffects(
+                    is_enabled=False,
+                    prompt=("Hall with piano playing in distance, no people talking")
+                ),
+                generated_video_clip_raw=None,
+                generated_video_clip_with_overlays=None,
+                generated_video_clip_with_audio_and_overlays=None,
+                generated_video_clip_final=None,
+                transition=None
+            )],
+            generated_video_url=None,
+            background_music=None
+        )
+        
+        processed_video = self.video_generator.process_video(video)
 
-        # Findings
-        # Image generation worked well for the keyframe the size is 536 × 896 pixels and took about 1 minute
-        # The narration audio generation took about 1 minute and the output length is 15 seconds
-        # the first video is generated in about 12 minutes and the output length is 17 seconds, with no lipsync for the last 2 seconds
-        # Then the video is used to create background audio effects, took 1 minute and the length is 9s! includes vocals and some bg noise
-        # Then we filter vocals out and its length is 9s
-        # Finally we mix the audio and the final video is 17s long. but the narraction is not fully synced with the video
-
-
-
+        print(f"Processed video: {processed_video}")
         return True
     
     def run_all_tests(self):
@@ -108,7 +183,8 @@ class VideoGeneratorTests:
         print("🚀 Starting Video Generator Tests...")
 
         tests = [
-            ("Audio effect + speech video layering", self.test_simple_talking_character_with_bg_audio_effects)
+            #("Audio effect + speech video layering", self.test_simple_talking_character_with_bg_audio_effects)
+            ("Two characters conversation with background audio effects", self.test_simple_two_characters_conversation_with_bg_effects)
         ]
         
         passed = 0
