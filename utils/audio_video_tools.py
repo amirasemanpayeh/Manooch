@@ -29,27 +29,38 @@ class AudioVideoMixer:
             self.temp_dir = None
 
     @staticmethod
-    def mix_audio_to_video(video_path: str, audio_files: list[str], audio_volumes: list[float], 
-                          output_video_path: str = None) -> str:
-        """
-        Mix multiple audio files with specified volumes onto a video.
-        
+    def mix_audio_to_video(
+        video_path: str,
+        audio_files: list[str],
+        audio_volumes: list[float],
+        output_video_path: str = None,
+        keep_audio_length: Optional[list[bool]] = None,
+    ) -> str:
+        """Mix multiple audio files with specified volumes onto a video.
+
         Args:
             video_path: Path to the input video file (local path or URL)
             audio_files: List of audio file paths (local paths or URLs)
             audio_volumes: List of volume levels for each audio file (0.0 to 1.0)
             output_video_path: Optional output path, if None uses storage system
-            
+            keep_audio_length: Optional flags per audio file; when True, the audio's
+                playback speed is left untouched even if durations differ from the video.
+
         Returns:
             Path to the final mixed video file
-            
+
         Raises:
             ValueError: If audio_files and audio_volumes lists have different lengths
             FileNotFoundError: If video_path or any audio file doesn't exist
         """
         if len(audio_files) != len(audio_volumes):
             raise ValueError("audio_files and audio_volumes must have the same length")
-        
+
+        if keep_audio_length is not None and len(keep_audio_length) != len(audio_files):
+            raise ValueError("keep_audio_length must match length of audio_files when provided")
+
+        keep_flags = keep_audio_length or [False] * len(audio_files)
+
         if not audio_files:
             raise ValueError("At least one audio file is required")
         
@@ -84,7 +95,7 @@ class AudioVideoMixer:
             except Exception:
                 target_duration = None
 
-            for i, (audio_file, volume) in enumerate(zip(audio_files, audio_volumes)):
+            for i, (audio_file, volume, keep_length) in enumerate(zip(audio_files, audio_volumes, keep_flags)):
                 print(f"🎵 Processing audio file {i+1}/{len(audio_files)} (volume: {volume})...")
                 # Download if URL
                 if audio_file.startswith(('http://', 'https://')):
@@ -111,7 +122,7 @@ class AudioVideoMixer:
                 adjusted_audio.export(str(adjusted_audio_path), format="wav")
 
                 # If possible, time-stretch to match target video duration
-                if target_duration is not None:
+                if target_duration is not None and not keep_length:
                     # Probe audio duration
                     try:
                         a_probe = subprocess.run([

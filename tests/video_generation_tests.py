@@ -50,7 +50,7 @@ class VideoGeneratorTests:
                     height=896,
                     set=None,
                     characters=None,
-                    basic_generation_prompt="A beautiful elegant woman with flowing blonde hair, wearing a vintage "
+                    basic_generation_prompt="A beautiful elegant woman with flowing ginger hair, wearing a vintage "
                                 "burgundy dress, sitting gracefully in an ornate Victorian parlor, holding a glass of white wine,"
                                 "with rich wooden furniture and warm golden lighting, portrait style, "
                                 "high quality, cinematic lighting",
@@ -58,7 +58,7 @@ class VideoGeneratorTests:
                     rendered_frame_by_vid_gen_url=None
                 ),
                 last_keyframe=None,  # Not needed because render engine is LIPSYNC_MOTION
-                video_prompt=("A sophisticated blonde woman, holding a glass of white wine, speaking elegantly about wine, with natural "
+                video_prompt=("A sophisticated ginger woman, holding a glass of white wine, speaking elegantly about wine, with natural "
                             "facial expressions and subtle head movements, in a Victorian parlor setting"),
                 style="cinematic, elegant",
                 narration=Narration(
@@ -90,6 +90,16 @@ class VideoGeneratorTests:
         processed_video = self.video_generator.process_video(video)
 
         print(f"Processed video: {processed_video}")
+
+        # Findings
+        # Image generation worked well for the keyframe the size is 536 × 896 pixels and took about 1 minute
+        # The narration audio generation took about 1 minute and the output length is 15 seconds
+        # the first video is generated in about 12 minutes and the output length is 17 seconds, with no lipsync for the last 2 seconds
+        # Then the video is used to create background audio effects, took 1 minute and the length is 9s! includes vocals and some bg noise
+        # Then we filter vocals out and its length is 9s
+        # Finally we mix the audio and the final video is 17s long. but the narraction is not fully synced with the video
+
+
 
         return True
     

@@ -1614,6 +1614,9 @@ class VideoGenerator:
 
             audio_files: list[str] = []
             audio_vols: list[float] = []
+            audio_keep_lengths: list[bool] = []
+
+            preserve_primary_audio = shot.render_engine == RenderEngine.LIPSYNC_MOTION
 
             # Character padded audios (in order, up to 2)
             try:
@@ -1623,6 +1626,7 @@ class VideoGenerator:
                         if url:
                             audio_files.append(url)
                             audio_vols.append(1.0)
+                            audio_keep_lengths.append(preserve_primary_audio)
                             if len(audio_files) >= 2:
                                 break
             except Exception:
@@ -1632,11 +1636,13 @@ class VideoGenerator:
             if shot.narration and shot.narration.audio_url:
                 audio_files.append(shot.narration.audio_url)
                 audio_vols.append(1.0)
+                audio_keep_lengths.append(preserve_primary_audio)
 
             # Background audio effects (SFX), quieter
             if shot.bg_audio_effects and shot.bg_audio_effects.audio_url:
                 audio_files.append(shot.bg_audio_effects.audio_url)
                 audio_vols.append(0.2)
+                audio_keep_lengths.append(False)
 
             if not audio_files:
                 # No audio to add; carry forward overlays video
@@ -1649,6 +1655,7 @@ class VideoGenerator:
                 video_path=base_video,
                 audio_files=audio_files,
                 audio_volumes=audio_vols,
+                keep_audio_length=audio_keep_lengths,
             )
 
             # Upload mixed video bytes
@@ -1829,7 +1836,6 @@ class VideoGenerator:
             # Apply background music if available
             if video.background_music:
                 video.background_music = self._resolve_background_music(bg_music=video.background_music, forced_duration=video.duration_seconds)
-
                 # Now combine the music with the final video using available mixer
                 if video.generated_video_url and video.background_music.audio_url:
                     self.logger.info("🎵 Combining final video with background music...")
@@ -1849,11 +1855,11 @@ class VideoGenerator:
                         self.logger.warning(f"⚠️ Warning: Failed to combine video with background music: {e}")
                         self.logger.info("Continuing with video without background music")
                 
-                print(f"🎶 Background music processed for video: {video.background_music.title}")
+                    print(f"🎶 Background music processed for video: {video.background_music.title}")
 
-            else:
-                print(f"⚠️ Warning: No videos generated for scene {video.id}")
-            return video
+                else:
+                    print(f"⚠️ Warning: No videos generated for scene {video.id}")
+                return video
             
         except Exception as e:
             self.logger.error(f"Failed to process video '{video.title}': {e}")
