@@ -1299,8 +1299,11 @@ class VideoGenerator:
             if not shot.first_keyframe:
                 raise ValueError("GENERATIVE_MOTION engine requires first_keyframe")
 
-            if (shot.last_keyframe.source == KeyframeSource.NOT_USED):
-                # Video is to be generated only with the first keyframe, use i2v
+            # Treat None last_keyframe same as NOT_USED
+            if (shot.last_keyframe is None or shot.last_keyframe.source == KeyframeSource.NOT_USED):
+                # Use I2V (Image-to-Video) generation
+                self.logger.info(f"Using I2V generation for shot '{shot.id}'")
+                
                 video_bytes = self.modal_manager.generate_video_from_image(
                         image_url=shot.first_keyframe.image_url,
                         prompt=shot.video_prompt,
@@ -1310,6 +1313,9 @@ class VideoGenerator:
                         fps=shot.fps
                 )
             else:
+                # Use FLF2V (First-Last-Frame-to-Video) generation
+                self.logger.info(f"Using FLF2V generation for shot '{shot.id}'")
+                
                 # Video is to be generated with both keyframes use fflf2v
                 if not shot.last_keyframe:
                     raise ValueError("GENERATIVE_MOTION engine requires last_keyframe (or set it explicitly to NOT_USED)")
