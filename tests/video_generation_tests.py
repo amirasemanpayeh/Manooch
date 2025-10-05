@@ -336,13 +336,13 @@ class VideoGeneratorTests:
                 width=720,
                 height=1080,
                 first_keyframe=KeyFrame(
-                    source=KeyframeSource.SUPPLIED,
+                    source=KeyframeSource.GENERATE,
                     linked_source_id=None,
                     width=720,
                     height=1080,
                     set=None,
                     characters=None,
-                    basic_generation_prompt=None,
+                    basic_generation_prompt="Edit this image and make the man sit behind a desk in the same environment, same distance from the camera, cinematic lighting, high quality, photorealistic, detailed, 4k",
                     supplied_image_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/Temp%20Dump/matt-silver--jqTm3EaGus-unsplash.jpg",
                     rendered_frame_by_vid_gen_url=None
                 ),
@@ -618,17 +618,19 @@ class VideoGeneratorTests:
                         text="Listen to this — this woman’s mom says she deserves to be her baby’s ‘first mom’… because she raised her.",
                         position=TextOverlayPosition.CENTER,
                         properties=TextOverlayProperties(
-                            font_size=24,
-                            color="#FFFFFF",
+                            font_size=42,
+                            color="#C4F4E0",
                             background_color="rgba(0,0,0,0.8)",  # Better with transparency
-                            font_family="Arial",  # Add missing font family
+                            font_family="Bebas Neue",  # Add missing font family
                             padding=10,           # Add missing padding
                             border_radius=5,      # Add missing border radius
-                            presentation_type=TextPresentationType.PROGRESSIVE_REVEAL,
+                            presentation_type=TextPresentationType.SLIDING_WINDOW,
                             presentation_animation_type=TextPresentationAnimationType.NONE,  # Correct field name
+                            window_size=2,        # Show 2 words at a time instead of default 3
+                            emphasize_latest_word=True,  # Defaults to False if not specified
                             timing=TextOverlayTiming(
                                 start_time_seconds=0.0,     # Correct field name
-                                end_time_seconds=6.0,       # Correct field name (not duration)
+                                duration_seconds=7.0,       # hard 7 seconds to match narration audio
                                 reveal_unit="word",         # Required for progressive reveal
                                 reveal_speed=1.0,           # Optional but good to specify
                                 animation_duration_in=0.5,  # For animations
@@ -651,16 +653,19 @@ class VideoGeneratorTests:
                         text="She’s twenty-six, just had her first baby — and her mom’s way too involved.",
                         position=TextOverlayPosition.CENTER,
                         properties=TextOverlayProperties(
-                            font_size=24,
+                            font_size=42,
                             color="#C4F4E0",
                             background_color="rgba(0,0,0,0.8)",  # Better with transparency
-                            font_family="Arial",  # Add missing font family
+                            font_family="Bebas Neue",  # Add missing font family
                             padding=10,           # Add missing padding
                             border_radius=5,      # Add missing border radius
-                            presentation_type=TextPresentationType.PROGRESSIVE_REVEAL,
+                            presentation_type=TextPresentationType.SLIDING_WINDOW,
                             presentation_animation_type=TextPresentationAnimationType.NONE,  # Correct field name
+                            window_size=2,        # Show 2 words at a time instead of default 3
+                            emphasize_latest_word=True,  # Defaults to False if not specified
                             timing=TextOverlayTiming(
                                 start_time_seconds=0.0,     # Correct field name
+                                duration_seconds=None,       # Set to NULL to match the video length
                                 reveal_unit="word",         # Required for progressive reveal
                                 reveal_speed=1.0,           # Optional but good to specify
                                 animation_duration_in=0.5,  # For animations
@@ -683,16 +688,19 @@ class VideoGeneratorTests:
                         text="At first it was sweet — but lately her mom’s crossing lines",
                         position=TextOverlayPosition.CENTER,
                         properties=TextOverlayProperties(
-                            font_size=24,
-                            color="#FFFFFF",
+                            font_size=42,
+                            color="#C4F4E0",
                             background_color="rgba(0,0,0,0.8)",  # Better with transparency
-                            font_family="Arial",  # Add missing font family
+                            font_family="Bebas Neue",  # Add missing font family
                             padding=10,           # Add missing padding
                             border_radius=5,      # Add missing border radius
-                            presentation_type=TextPresentationType.PROGRESSIVE_REVEAL,
+                            presentation_type=TextPresentationType.SLIDING_WINDOW,
                             presentation_animation_type=TextPresentationAnimationType.NONE,  # Correct field name
+                            window_size=2,        # Show 2 words at a time instead of default 3
+                            emphasize_latest_word=True,  # Defaults to False if not specified
                             timing=TextOverlayTiming(
                                 start_time_seconds=0.0,     # Correct field name
+                                duration_seconds=None,       # Set to NULL to match the video length
                                 reveal_unit="word",         # Required for progressive reveal
                                 reveal_speed=1.0,           # Optional but good to specify
                                 animation_duration_in=0.5,  # For animations
@@ -715,16 +723,19 @@ class VideoGeneratorTests:
                         text="She even called the baby ‘our baby’ — and said, ‘I’m the first mom, I raised you.’",
                         position=TextOverlayPosition.CENTER,
                         properties=TextOverlayProperties(
-                            font_size=24,
-                            color="#FFFFFF",
+                            font_size=42,
+                            color="#C4F4E0",
                             background_color="rgba(0,0,0,0.8)",  # Better with transparency
-                            font_family="Arial",  # Add missing font family
+                            font_family="Bebas Neue",  # Add missing font family
                             padding=10,           # Add missing padding
                             border_radius=5,      # Add missing border radius
-                            presentation_type=TextPresentationType.PROGRESSIVE_REVEAL,
+                            presentation_type=TextPresentationType.SLIDING_WINDOW,
                             presentation_animation_type=TextPresentationAnimationType.NONE,  # Correct field name
+                            window_size=2,        # Show 2 words at a time instead of default 3
+                            emphasize_latest_word=True,  # Defaults to False if not specified
                             timing=TextOverlayTiming(
                                 start_time_seconds=0.0,     # Correct field name
+                                duration_seconds=None,       # Set to NULL to match the video length
                                 reveal_unit="word",         # Required for progressive reveal
                                 reveal_speed=1.0,           # Optional but good to specify
                                 animation_duration_in=0.5,  # For animations
@@ -747,16 +758,19 @@ class VideoGeneratorTests:
                         text="Now she critiques everything — feeding, swaddling, even saying the baby likes her more.",
                         position=TextOverlayPosition.CENTER,
                         properties=TextOverlayProperties(
-                            font_size=24,
-                            color="#FFFFFF",
+                            font_size=42,
+                            color="#C4F4E0",
                             background_color="rgba(0,0,0,0.8)",  # Better with transparency
-                            font_family="Arial",  # Add missing font family
+                            font_family="Bebas Neue",  # Add missing font family
                             padding=10,           # Add missing padding
                             border_radius=5,      # Add missing border radius
-                            presentation_type=TextPresentationType.PROGRESSIVE_REVEAL,
+                            presentation_type=TextPresentationType.SLIDING_WINDOW,
                             presentation_animation_type=TextPresentationAnimationType.NONE,  # Correct field name
+                            window_size=2,        # Show 2 words at a time instead of default 3
+                            emphasize_latest_word=True,  # Defaults to False if not specified
                             timing=TextOverlayTiming(
                                 start_time_seconds=0.0,     # Correct field name
+                                duration_seconds=None,       # Set to NULL to match the video length
                                 reveal_unit="word",         # Required for progressive reveal
                                 reveal_speed=1.0,           # Optional but good to specify
                                 animation_duration_in=0.5,  # For animations
@@ -779,16 +793,19 @@ class VideoGeneratorTests:
                         text="When called out, she snapped — said her daughter’s ungrateful and can’t parent alone.",
                         position=TextOverlayPosition.CENTER,
                         properties=TextOverlayProperties(
-                            font_size=24,
-                            color="#FFFFFF",
+                            font_size=42,
+                            color="#C4F4E0",
                             background_color="rgba(0,0,0,0.8)",  # Better with transparency
-                            font_family="Arial",  # Add missing font family
+                            font_family="Bebas Neue",  # Add missing font family
                             padding=10,           # Add missing padding
                             border_radius=5,      # Add missing border radius
-                            presentation_type=TextPresentationType.PROGRESSIVE_REVEAL,
+                            presentation_type=TextPresentationType.SLIDING_WINDOW,
                             presentation_animation_type=TextPresentationAnimationType.NONE,  # Correct field name
+                            window_size=2,        # Show 2 words at a time instead of default 3
+                            emphasize_latest_word=True,  # Defaults to False if not specified
                             timing=TextOverlayTiming(
                                 start_time_seconds=0.0,     # Correct field name
+                                duration_seconds=None,       # Set to NULL to match the video length
                                 reveal_unit="word",         # Required for progressive reveal
                                 reveal_speed=1.0,           # Optional but good to specify
                                 animation_duration_in=0.5,  # For animations
@@ -811,16 +828,19 @@ class VideoGeneratorTests:
                         text="Now she wants a trial run — to take the baby overnight and ‘prove she can do it better.",
                         position=TextOverlayPosition.CENTER,
                         properties=TextOverlayProperties(
-                            font_size=24,
-                            color="#FFFFFF",
+                            font_size=42,
+                            color="#C4F4E0",
                             background_color="rgba(0,0,0,0.8)",  # Better with transparency
-                            font_family="Arial",  # Add missing font family
+                            font_family="Bebas Neue",  # Add missing font family
                             padding=10,           # Add missing padding
                             border_radius=5,      # Add missing border radius
-                            presentation_type=TextPresentationType.PROGRESSIVE_REVEAL,
+                            presentation_type=TextPresentationType.SLIDING_WINDOW,
                             presentation_animation_type=TextPresentationAnimationType.NONE,  # Correct field name
+                            window_size=2,        # Show 2 words at a time instead of default 3
+                            emphasize_latest_word=True,  # Defaults to False if not specified
                             timing=TextOverlayTiming(
                                 start_time_seconds=0.0,     # Correct field name
+                                duration_seconds=None,       # Set to NULL to match the video length
                                 reveal_unit="word",         # Required for progressive reveal
                                 reveal_speed=1.0,           # Optional but good to specify
                                 animation_duration_in=0.5,  # For animations
@@ -840,19 +860,22 @@ class VideoGeneratorTests:
                 supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/a2d5ae01-5428-4ec7-abe5-c6782f13f3ce.mp4",
                 overlays = [
                     TextOverlay(
-                        text="She says it feels like her mom doesn’t see her as a parent — just an assistant.",
+                        text="She says it feels like her mom doesn’t see her as a parent, just an assistant.",
                         position=TextOverlayPosition.CENTER,
                         properties=TextOverlayProperties(
-                            font_size=24,
-                            color="#FFFFFF",
+                            font_size=42,
+                            color="#C4F4E0",
                             background_color="rgba(0,0,0,0.8)",  # Better with transparency
-                            font_family="Arial",  # Add missing font family
+                            font_family="Bebas Neue",  # Add missing font family
                             padding=10,           # Add missing padding
                             border_radius=5,      # Add missing border radius
-                            presentation_type=TextPresentationType.PROGRESSIVE_REVEAL,
+                            presentation_type=TextPresentationType.SLIDING_WINDOW,
                             presentation_animation_type=TextPresentationAnimationType.NONE,  # Correct field name
+                            window_size=2,        # Show 2 words at a time instead of default 3
+                            emphasize_latest_word=True,  # Defaults to False if not specified
                             timing=TextOverlayTiming(
                                 start_time_seconds=0.0,     # Correct field name
+                                duration_seconds=None,       # Set to NULL to match the video length
                                 reveal_unit="word",         # Required for progressive reveal
                                 reveal_speed=1.0,           # Optional but good to specify
                                 animation_duration_in=0.5,  # For animations
@@ -872,19 +895,22 @@ class VideoGeneratorTests:
                 supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/ddcd9272-975a-457e-8ea5-b456c65860af.mp4",
                 overlays = [
                     TextOverlay(
-                        text="It’s heartbreaking — she loves her mom but feels completely undermined.",
+                        text="It’s heartbreaking, she loves her mom but feels completely undermined.",
                         position=TextOverlayPosition.CENTER,
                         properties=TextOverlayProperties(
-                            font_size=24,
-                            color="#FFFFFF",
+                            font_size=42,
+                            color="#C4F4E0",
                             background_color="rgba(0,0,0,0.8)",  # Better with transparency
-                            font_family="Arial",  # Add missing font family
+                            font_family="Bebas Neue",  # Add missing font family
                             padding=10,           # Add missing padding
                             border_radius=5,      # Add missing border radius
-                            presentation_type=TextPresentationType.PROGRESSIVE_REVEAL,
+                            presentation_type=TextPresentationType.SLIDING_WINDOW,
                             presentation_animation_type=TextPresentationAnimationType.NONE,  # Correct field name
+                            window_size=2,        # Show 2 words at a time instead of default 3
+                            emphasize_latest_word=True,  # Defaults to False if not specified
                             timing=TextOverlayTiming(
                                 start_time_seconds=0.0,     # Correct field name
+                                duration_seconds=None,       # Set to NULL to match the video length
                                 reveal_unit="word",         # Required for progressive reveal
                                 reveal_speed=1.0,           # Optional but good to specify
                                 animation_duration_in=0.5,  # For animations
@@ -904,19 +930,22 @@ class VideoGeneratorTests:
                 supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/bb22621a-3f46-4213-8d2a-270cdde80001.mp4",
                 overlays = [
                     TextOverlay(
-                        text="If your own parent claimed they were the ‘first mom’ to your child, what would you do? Comment below — would you cut contact, or try to make peace?",
+                        text="If your own parent claimed they were the ‘first mom’ to your child, what would you do? Comment below. Would you cut contact, or try to make peace?",
                         position=TextOverlayPosition.CENTER,
                         properties=TextOverlayProperties(
-                            font_size=24,
-                            color="#FFFFFF",
+                            font_size=42,
+                            color="#C4F4E0",
                             background_color="rgba(0,0,0,0.8)",  # Better with transparency
-                            font_family="Arial",  # Add missing font family
+                            font_family="Bebas Neue",  # Add missing font family
                             padding=10,           # Add missing padding
                             border_radius=5,      # Add missing border radius
-                            presentation_type=TextPresentationType.PROGRESSIVE_REVEAL,
+                            presentation_type=TextPresentationType.SLIDING_WINDOW,
                             presentation_animation_type=TextPresentationAnimationType.NONE,  # Correct field name
+                            window_size=2,        # Show 2 words at a time instead of default 3
+                            emphasize_latest_word=True,  # Defaults to False if not specified
                             timing=TextOverlayTiming(
                                 start_time_seconds=0.0,     # Correct field name
+                                duration_seconds=None,       # Set to NULL to match the video length
                                 reveal_unit="word",         # Required for progressive reveal
                                 reveal_speed=1.0,           # Optional but good to specify
                                 animation_duration_in=0.5,  # For animations
@@ -945,11 +974,11 @@ class VideoGeneratorTests:
             #("Audio effect + speech video layering", self.test_simple_talking_character_with_bg_audio_effects)
             #("Two characters conversation with background audio effects", self.test_simple_two_characters_conversation_with_bg_effects)
             #("Sim singing", self.test_sim_singing)
-            #("Single character supplied image and audio", self.first_short_content_test_shot_001)
+            ("Single character supplied image and audio", self.first_short_content_test_shot_001)
             #("First short content test shot 002", self.first_short_content_test_shot_002)
             #("First short content test generic shots", self.first_short_content_test_generic_shots)
             #("First short content test shot last", self.first_short_content_test_shot_00last)
-            ("First short content test make full video from generated shot videos", self.first_short_content_test_make_full_video_from_generated_shot_videos)
+            #("First short content test make full video from generated shot videos", self.first_short_content_test_make_full_video_from_generated_shot_videos)
         ]
         
         passed = 0

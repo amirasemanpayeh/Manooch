@@ -105,6 +105,12 @@ class VideoTextOverlayManager:
                     processed_video_path = self._handle_progressive_reveal_overlay(
                         processed_video_path, overlay, width, height, fps, duration
                     )
+                elif overlay.properties.presentation_type == TextPresentationType.SLIDING_WINDOW:
+                    # Use window_size from overlay properties
+                    window_size = getattr(overlay.properties, 'window_size', 3)  # Default to 3 if not specified
+                    processed_video_path = self._handle_sliding_window_overlay(
+                        processed_video_path, overlay, width, height, fps, duration, window_size=window_size
+                    )
                 else:
                     self.logger.warning(f"⚠️ Unknown presentation type {overlay.properties.presentation_type}")
             
@@ -527,7 +533,16 @@ class VideoTextOverlayManager:
                 properties=overlay.properties
             )
 
-            overlay_html = self._generate_overlay_html(partial_overlay, width, height)
+            # Check if we should emphasize the latest word (defaults to False if not specified)
+            emphasize_latest = getattr(overlay.properties, 'emphasize_latest_word', False)
+            if emphasize_latest and reveal_unit == "word" and len(window_units) > 1:
+                # Generate special HTML with emphasized latest word
+                overlay_html = self._generate_sliding_window_html_with_emphasis(
+                    partial_overlay, window_units, width, height
+                )
+            else:
+                # Use standard HTML generation
+                overlay_html = self._generate_overlay_html(partial_overlay, width, height)
             image_path = self._render_html_to_image(
                 overlay_html, width, height, suffix=f"_window_{step}"
             )
@@ -695,6 +710,143 @@ class VideoTextOverlayManager:
         if animation_css:
             html = html.replace("</style>", f"{animation_css}</style>")
         
+        return html
+    
+    def _generate_sliding_window_html_with_emphasis(self, overlay: TextOverlay, window_units: list, video_width: int, video_height: int) -> str:
+        """
+        Generate HTML/CSS for sliding window overlay with the latest word emphasized.
+        """
+        # Get position coordinates
+        x, y = self._get_position_coordinates(overlay.position, video_width, video_height)
+        
+        # Create emphasized text with the last word larger
+        normal_words = window_units[:-1]  # All words except the last
+        emphasized_word = window_units[-1]  # The last word
+        
+        # Calculate font sizes
+        normal_font_size = overlay.properties.font_size
+        emphasized_font_size = normal_font_size + 6  # 6 points larger
+        
+        # Build the mixed content - ensure proper spacing
+        normal_text = ' '.join(normal_words) if normal_words else ""
+        
+        # Build CSS styles for container
+        container_styles = f"""
+            font-family: '{overlay.properties.font_family}', sans-serif;
+            color: {overlay.properties.color};
+            background-color: {overlay.properties.background_color};
+            padding: {overlay.properties.padding}px;
+            border-radius: {overlay.properties.border_radius}px;
+            position: absolute;
+            left: {x}px;
+            top: {y}px;
+            transform: translate(-50%, -50%);
+            white-space: pre-wrap;
+            text-align: center;
+            max-width: {video_width * 0.8}px;
+            word-wrap: break-word;
+            display: inline-block;
+        """
+        
+        body_height = int(video_height)
+        body_width = int(video_width)
+        overlay_x = int(round(x))
+        overlay_y = int(round(y))
+        line_height = max(emphasized_font_size * 1.2, emphasized_font_size + 2)
+        
+        # Build complete text with proper spacing - simpler approach
+        if normal_text and emphasized_word:
+            complete_text = f"{normal_text} {emphasized_word}"
+        elif normal_text:
+            complete_text = normal_text  
+        elif emphasized_word:
+            complete_text = emphasized_word
+        else:
+            complete_text = ""
+        
+        # Split into words to rebuild with spans and proper spacing
+        all_words = complete_text.split()
+        total_words = len(all_words)
+        normal_word_count = len(normal_words) if normal_words else 0
+        
+        # ROBUST APPROACH: Use explicit spacing with CSS margins and padding
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <link href="https://fonts.googleapis.com/css2?family={overlay.properties.font_family.replace(' ', '+')}:wght@300;400;700&display=swap" rel="stylesheet">
+            <style>
+                * {{
+                    box-sizing: border-box;
+                }}
+                body {{
+                    margin: 0;
+                    padding: 0;
+                    width: {body_width}px;
+                    height: {body_height}px;
+                    background: transparent;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-family: '{overlay.properties.font_family}', sans-serif;
+                }}
+                .canvas {{
+                    position: relative;
+                    width: {video_width}px;
+                    height: {video_height}px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }}
+                .overlay {{
+                    background-color: {overlay.properties.background_color};
+                    padding: {overlay.properties.padding}px;
+                    border-radius: {overlay.properties.border_radius}px;
+                    text-align: center;
+                    max-width: {video_width * 0.8}px;
+                    line-height: {line_height}px;
+                    display: inline-flex;
+                    flex-wrap: wrap;
+                    align-items: baseline;
+                    justify-content: center;
+                    gap: 0.35em;
+                }}
+                .word-span {{
+                    display: inline-block;
+                    white-space: nowrap;
+                }}
+                .normal-word {{
+                    font-size: {normal_font_size}px;
+                    font-weight: 400;
+                    color: {overlay.properties.color};
+                }}
+                .emphasized-word {{
+                    font-size: {emphasized_font_size}px;
+                    font-weight: 700;
+                    color: {overlay.properties.color};
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="canvas">
+                <div class="overlay">"""
+        
+        # Build content word by word with explicit spacing using flexbox gap
+        for i, word in enumerate(all_words):
+            if i < normal_word_count:
+                # This is a normal word - use word-span wrapper for proper spacing
+                html += f'<span class="word-span normal-word">{word}</span>'
+            else:
+                # This is the emphasized word - use word-span wrapper for proper spacing
+                html += f'<span class="word-span emphasized-word">{word}</span>'
+        
+        html += """
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
         return html
     
     def _get_position_coordinates(self, position: TextOverlayPosition, width: int, height: int) -> Tuple[int, int]:

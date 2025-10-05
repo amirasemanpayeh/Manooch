@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     # =============================================
     
     # Image Editing Provider (openai or qwen) - applies to all I2I operations
-    use_openai_for_image_editing: bool = Field(default=True, env="USE_OPENAI_FOR_IMAGE_EDITING")
+    use_openai_for_image_editing: bool = Field(default=False, env="USE_OPENAI_FOR_IMAGE_EDITING")
     
     # Set Variant Generation Provider (openai or qwen) - DEPRECATED: use use_openai_for_image_editing instead
     use_openai_for_set_variants: bool = Field(default=True, env="USE_OPENAI_FOR_SET_VARIANTS")

@@ -225,6 +225,7 @@ class TextPresentationType(Enum):
     STATIC_OVERLAY = "Static Overlay"               # Always on screen for its duration
     DURATION_BASED_WITH_ANIMATION = "Duration Based" # Visible for a duration, animated in/out
     PROGRESSIVE_REVEAL = "Progressive Reveal"       # Reveals over time (by character/word/line)
+    SLIDING_WINDOW = "Sliding Window"               # Shows a moving window of text during reveal
 
 class TextPresentationAnimationType(Enum):
     """Animation styles for entering/leaving."""
@@ -287,6 +288,8 @@ class TextOverlayProperties:
     presentation_type: TextPresentationType = TextPresentationType.STATIC_OVERLAY
     presentation_animation_type: TextPresentationAnimationType = TextPresentationAnimationType.NONE
     timing: TextOverlayTiming = field(default_factory=TextOverlayTiming)
+    window_size: int = 3  # Number of units (words/characters/lines) to show in sliding window
+    emphasize_latest_word: bool = False  # Make the most recent word in sliding window larger/emphasized
 
 @dataclass
 class TextOverlay:
