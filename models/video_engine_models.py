@@ -488,6 +488,8 @@ class VideoBlock:
 
     generated_video_clip_final: Optional[str] = None    # Final output after music added (populated by the engine)
 
+    supplied_video_with_audio_url: Optional[str] = None  # If provided, use this video (with audio) instead of generating
+
     transition: Transition = Transition.CUT     # Linking / continuity
 
 

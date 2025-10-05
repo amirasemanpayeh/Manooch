@@ -550,7 +550,7 @@ class VideoStitcher:
                 str(output_path),
                 codec='libx264',
                 audio_codec='aac',
-                logger=None
+                logger='bar'
             )
             
             if return_bytes:

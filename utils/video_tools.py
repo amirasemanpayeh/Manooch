@@ -181,6 +181,122 @@ class VideoTools:
             except Exception:
                 pass
 
+    def extract_frame_from_video(self, video_bytes: bytes, which_frame: str) -> bytes:
+        """
+        Extract a frame from the video bytes and return the frame as bytes.
+        
+        Args:
+            video_bytes: Raw bytes of the video file
+            which_frame: "first" or "last" - which frame to extract
+            
+        Returns:
+            bytes: The extracted frame as PNG bytes, or empty bytes if extraction fails
+        """
+        import tempfile
+        import subprocess
+        import os
+        
+        if not video_bytes:
+            self.logger.error(f"[extract_frame] video_bytes is empty")
+            return b""
+            
+        if which_frame not in ["first", "last"]:
+            self.logger.error(f"[extract_frame] Invalid which_frame: {which_frame}. Must be 'first' or 'last'")
+            return b""
+            
+        try:
+            # Create temporary files for input video and output frame
+            with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as temp_video:
+                temp_video.write(video_bytes)
+                temp_video_path = temp_video.name
+            
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_frame:
+                temp_frame_path = temp_frame.name
+            
+            try:
+                if which_frame == "last":
+                    # For last frame, first get video duration, then seek to near the end
+                    cmd_info = [
+                        'ffprobe', '-v', 'quiet',
+                        '-show_entries', 'format=duration',
+                        '-of', 'csv=p=0',
+                        temp_video_path
+                    ]
+                    
+                    duration_result = subprocess.run(
+                        cmd_info, 
+                        capture_output=True, 
+                        text=True, 
+                        timeout=10
+                    )
+                    
+                    if duration_result.returncode == 0 and duration_result.stdout.strip():
+                        try:
+                            duration = float(duration_result.stdout.strip())
+                            # Seek to 0.1 seconds before the end, or to 90% of duration if very short
+                            seek_time = max(0, duration - 0.1) if duration > 0.2 else duration * 0.9
+                        except ValueError:
+                            seek_time = 0  # Fallback to beginning if duration parsing fails
+                    else:
+                        seek_time = 0  # Fallback if duration detection fails
+                        
+                    # Extract frame at the calculated time
+                    cmd = [
+                        'ffmpeg', '-y',  # -y to overwrite output file
+                        '-ss', str(seek_time),  # Seek to near end
+                        '-i', temp_video_path,
+                        '-vframes', '1',  # Extract only 1 frame
+                        '-q:v', '2',     # High quality
+                        temp_frame_path
+                    ]
+                
+                else:  # which_frame == "first"
+                    # Extract the first frame
+                    cmd = [
+                        'ffmpeg', '-y',  # -y to overwrite output file
+                        '-i', temp_video_path,
+                        '-vframes', '1',  # Extract only 1 frame
+                        '-q:v', '2',     # High quality
+                        temp_frame_path
+                    ]
+                
+                result = subprocess.run(
+                    cmd, 
+                    capture_output=True, 
+                    text=True, 
+                    timeout=30
+                )
+                
+                if result.returncode != 0:
+                    self.logger.error(f"[extract_frame] FFmpeg failed: {result.stderr}")
+                    return b""
+                
+                # Read the extracted frame bytes
+                with open(temp_frame_path, 'rb') as frame_file:
+                    frame_bytes = frame_file.read()
+                
+                if not frame_bytes:
+                    self.logger.error(f"[extract_frame] extracted {which_frame} frame is empty")
+                    return b""
+                
+                self.logger.info(f"[extract_frame] ✅ Successfully extracted {which_frame} frame ({len(frame_bytes)} bytes)")
+                return frame_bytes
+                    
+            finally:
+                # Clean up temporary files
+                try:
+                    os.unlink(temp_video_path)
+                    os.unlink(temp_frame_path)
+                except OSError:
+                    pass  # Ignore cleanup errors
+                    
+        except subprocess.TimeoutExpired:
+            self.logger.error(f"[extract_frame] FFmpeg timeout while extracting {which_frame} frame")
+            return b""
+        except Exception as e:
+            self.logger.error(f"[extract_frame] unexpected error while extracting {which_frame} frame: {e}")
+            return b""
+
 
 def run_all_video_transitions():
     """Test all available video transitions on two sample videos."""

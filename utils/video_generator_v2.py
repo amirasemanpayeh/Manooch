@@ -1097,6 +1097,16 @@ class VideoGenerator:
         except Exception as e:
             self.logger.error(f"Failed to download image from {url}: {e}")
             return None
+        
+    def _download_video_bytes(self, url: str) -> bytes:
+        """Download a video from a public URL and return raw bytes."""
+        try:
+            response = requests.get(url, timeout=60)
+            response.raise_for_status()
+            return response.content
+        except Exception as e:
+            self.logger.error(f"Failed to download video from {url}: {e}")
+            return None
 
     def _remove_background(self, image_bytes: bytes) -> bytes:
         """
@@ -1126,106 +1136,54 @@ class VideoGenerator:
             self.logger.error(f"Background removal failed: {e} - using original image")
             return image_bytes
         
+    def _extract_frame_from_video(self, video_bytes: bytes, which_frame: str = "last") -> str:
+        """
+        Extract a frame from the video bytes and return its URL.
+        
+        Args:
+            video_bytes: Raw bytes of the video file
+            which_frame: "first" or "last" - which frame to extract (default: "last")
+            
+        Returns:
+            str: URL of the uploaded frame, or empty string if extraction/upload fails
+        """
+        if not video_bytes:
+            self.logger.error(f"[extract_{which_frame}_frame] video_bytes is empty")
+            return ""
+        
+        # Use VideoTools to extract the frame bytes
+        if not self.video_tools:
+            self.logger.error(f"[extract_{which_frame}_frame] video_tools not available")
+            return ""
+        
+        try:
+            # Extract frame bytes using VideoTools
+            frame_bytes = self.video_tools.extract_frame_from_video(video_bytes, which_frame)
+            
+            if not frame_bytes:
+                self.logger.error(f"[extract_{which_frame}_frame] failed to extract frame bytes")
+                return ""
+            
+            # Upload the frame and return URL
+            frame_url = self._upload_image_asset_to_bucket(frame_bytes)
+            if frame_url:
+                self.logger.info(f"[extract_{which_frame}_frame] ✅ Successfully extracted and uploaded {which_frame} frame")
+                return frame_url
+            else:
+                self.logger.error(f"[extract_{which_frame}_frame] failed to upload frame")
+                return ""
+                
+        except Exception as e:
+            self.logger.error(f"[extract_{which_frame}_frame] unexpected error: {e}")
+            return ""
+
     def _extract_last_frame_from_video(self, video_bytes: bytes) -> str:
         """Extract the last frame from the video bytes and return its URL."""
-        import tempfile
-        import subprocess
-        from PIL import Image
-        import io
-        
-        if not video_bytes:
-            self.logger.error("[extract_last_frame] video_bytes is empty")
-            return ""
-            
-        try:
-            # Create temporary files for input video and output frame
-            with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as temp_video:
-                temp_video.write(video_bytes)
-                temp_video_path = temp_video.name
-            
-            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_frame:
-                temp_frame_path = temp_frame.name
-            
-            try:
-                # Use FFmpeg to extract the last frame
-                # First get video duration, then seek to near the end
-                cmd_info = [
-                    'ffprobe', '-v', 'quiet',
-                    '-show_entries', 'format=duration',
-                    '-of', 'csv=p=0',
-                    temp_video_path
-                ]
-                
-                duration_result = subprocess.run(
-                    cmd_info, 
-                    capture_output=True, 
-                    text=True, 
-                    timeout=10
-                )
-                
-                if duration_result.returncode == 0 and duration_result.stdout.strip():
-                    try:
-                        duration = float(duration_result.stdout.strip())
-                        # Seek to 0.1 seconds before the end, or to 90% of duration if very short
-                        seek_time = max(0, duration - 0.1) if duration > 0.2 else duration * 0.9
-                    except ValueError:
-                        seek_time = 0  # Fallback to beginning if duration parsing fails
-                else:
-                    seek_time = 0  # Fallback if duration detection fails
-                
-                # Extract frame at the calculated time
-                cmd = [
-                    'ffmpeg', '-y',  # -y to overwrite output file
-                    '-ss', str(seek_time),  # Seek to near end
-                    '-i', temp_video_path,
-                    '-vframes', '1',  # Extract only 1 frame
-                    '-q:v', '2',     # High quality
-                    temp_frame_path
-                ]
-                
-                result = subprocess.run(
-                    cmd, 
-                    capture_output=True, 
-                    text=True, 
-                    timeout=30
-                )
-                
-                if result.returncode != 0:
-                    self.logger.error(f"[extract_last_frame] FFmpeg failed: {result.stderr}")
-                    return ""
-                
-                # Read the extracted frame and upload it
-                with open(temp_frame_path, 'rb') as frame_file:
-                    frame_bytes = frame_file.read()
-                
-                if not frame_bytes:
-                    self.logger.error("[extract_last_frame] extracted frame is empty")
-                    return ""
-                
-                # Upload the frame and return URL
-                frame_url = self._upload_image_asset_to_bucket(frame_bytes)
-                if frame_url:
-                    self.logger.info(f"[extract_last_frame] ✅ Successfully extracted and uploaded last frame")
-                    return frame_url
-                else:
-                    self.logger.error("[extract_last_frame] failed to upload frame")
-                    return ""
-                    
-            finally:
-                # Clean up temporary files
-                import os
-                try:
-                    os.unlink(temp_video_path)
-                    os.unlink(temp_frame_path)
-                except OSError:
-                    pass  # Ignore cleanup errors
-                    
-        except subprocess.TimeoutExpired:
-            self.logger.error("[extract_last_frame] FFmpeg timeout")
-            return ""
-        except Exception as e:
-            self.logger.error(f"[extract_last_frame] unexpected error: {e}")
-            return ""
+        return self._extract_frame_from_video(video_bytes, "last")
+
+    def _extract_first_frame_from_video(self, video_bytes: bytes) -> str:
+        """Extract the first frame from the video bytes and return its URL."""
+        return self._extract_frame_from_video(video_bytes, "first")
 
     def _save_board_locally(self, board_bytes: bytes, keyframe_id: str, shot_info: str = "") -> str:
         """
@@ -1844,20 +1802,48 @@ class VideoGenerator:
             self.logger.info(f"Step 2: Processing {len(video.shots)} shots")
             for i, shot in enumerate(video.shots):
                 self.logger.info(f"Processing shot {i+1}/{len(video.shots)} (ID: {shot.id})")
+
+                # Check if the shot has a supplied video with audio URL
+                # If the shot has a supplied video with audio URL, we skip generation and use it directly
+                if not shot.supplied_video_with_audio_url or not shot.supplied_video_with_audio_url.strip():
+                    self.logger.info(f"Shot {i+1} has no supplied video with audio URL, proceeding with generation")
                 
-                # Process first keyframe
-                if shot.first_keyframe:
-                    self.logger.info(f"Processing first keyframe for shot {i+1}")
-                    shot.first_keyframe = self._resolve_keyframe(video, shot.first_keyframe)
+                    # Process first keyframe
+                    if shot.first_keyframe:
+                        self.logger.info(f"Processing first keyframe for shot {i+1}")
+                        shot.first_keyframe = self._resolve_keyframe(video, shot.first_keyframe)
+                    else:
+                        self.logger.warning(f"Shot {i+1} has no first keyframe")
+                    
+                    # Process last keyframe  
+                    if shot.last_keyframe:
+                        self.logger.info(f"Processing last keyframe for shot {i+1}")
+                        shot.last_keyframe = self._resolve_keyframe(video, shot.last_keyframe)
+                    else:
+                        self.logger.warning(f"Shot {i+1} has no last keyframe")
                 else:
-                    self.logger.warning(f"Shot {i+1} has no first keyframe")
-                
-                # Process last keyframe  
-                if shot.last_keyframe:
-                    self.logger.info(f"Processing last keyframe for shot {i+1}")
-                    shot.last_keyframe = self._resolve_keyframe(video, shot.last_keyframe)
-                else:
-                    self.logger.warning(f"Shot {i+1} has no last keyframe")
+                    self.logger.info(f"Shot {i+1} has supplied video with audio URL, skipping generation")
+                    # Download the video and store to variable as bytes
+                    video_bytes = self._download_video_bytes(shot.supplied_video_with_audio_url)
+                    if not video_bytes:
+                        raise ValueError(f"Failed to download supplied video for shot {i+1}")
+                    
+                    # Extract the last frame of the video and replace the shot's last_keyframe.rendered_frame_by_vid_gen_url
+                    try:
+                        first_frame_url = self._extract_first_frame_from_video(video_bytes)
+                        last_frame_url = self._extract_last_frame_from_video(video_bytes)
+                        if shot.first_keyframe:
+                            shot.first_keyframe.image_url = first_frame_url
+                            shot.first_keyframe.supplied_image_url = first_frame_url
+                            shot.first_keyframe.rendered_frame_by_vid_gen_url = first_frame_url
+                        if shot.last_keyframe:
+                            shot.last_keyframe.image_url = last_frame_url
+                            shot.last_keyframe.supplied_image_url = last_frame_url
+                            shot.last_keyframe.rendered_frame_by_vid_gen_url = last_frame_url
+                    except Exception as e:
+                        self.logger.warning(f"Failed to extract last frame: {e}")
+
+                video.shots[i] = shot
 
             # Step 3: Process the shots for video generation
             for shot in video.shots:
@@ -1868,17 +1854,26 @@ class VideoGenerator:
                 # Create narration audio if needed
                 shot = self._create_narration_audio(shot)
 
-                # Generate the video for the shot based on the render engine and keyframes
-                shot = self._render_video(shot, video)
-
-                # Create background audio effect if needed, it needs to happen after rendering the video and before overlays are added
-                shot = self._create_bg_audio_effects(shot)
-
-                # Apply text overlays if any
-                shot = self._apply_overlays(shot)
-
-                # Finally blend all audio layers for this shot (characters, narration, SFX)
-                shot = self._mix_audio_layers_into_video(shot)
+                # Check if the shot has a supplied video with audio URL
+                # If the shot has a supplied video with audio URL, we skip generation and use it directly
+                if not shot.supplied_video_with_audio_url or not shot.supplied_video_with_audio_url.strip():
+                    # Generate the video for the shot based on the render engine and keyframes
+                    shot = self._render_video(shot, video)
+                    # Create background audio effect if needed, it needs to happen after rendering the video and before overlays are added
+                    shot = self._create_bg_audio_effects(shot)
+                    # Apply text overlays if any
+                    shot = self._apply_overlays(shot)
+                    # Finally blend all audio layers for this shot (characters, narration, SFX)
+                    shot = self._mix_audio_layers_into_video(shot)
+                else:
+                    self.logger.info(f"Shot {shot.id} has supplied video with audio URL, skipping generation")
+                    # The supplied video has audio so we don't need to generate it
+                    shot.generated_video_clip_raw = shot.supplied_video_with_audio_url
+                    # Apply text overlays if any
+                    shot = self._apply_overlays(shot)
+                    # Since the supplied video already has audio, we can just set the final to the overlays version
+                    shot.generated_video_clip_with_audio_and_overlays = shot.generated_video_clip_with_overlays
+                    shot.generated_video_clip_final = shot.generated_video_clip_with_overlays
 
                 video.shots[video.shots.index(shot)] = shot
 

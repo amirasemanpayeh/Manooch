@@ -3,7 +3,7 @@ import os
 import time
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models.video_engine_models import BackgroundAudioEffects, KeyFrame, KeyframeSource, Narration, RenderEngine, Set, SetVariant, TextOverlay, TextOverlayPosition, TextOverlayProperties, TextOverlayTiming, TextPresentationAnimationType, TextPresentationType, Video, VideoBlock
+from models.video_engine_models import BackgroundAudioEffects, KeyFrame, KeyframeSource, Narration, RenderEngine, Set, SetVariant, TextOverlay, TextOverlayPosition, TextOverlayProperties, TextOverlayTiming, TextPresentationAnimationType, TextPresentationType, Transition, Video, VideoBlock
 from utils.modal_manager import ModalManager
 from utils.supabase_manager import SupabaseManager, set_supabase_manager
 from utils.audio_video_tools import AudioVideoMixer
@@ -536,6 +536,407 @@ class VideoGeneratorTests:
 
         return True
     
+    def first_short_content_test_shot_00last(self) -> bool:# This test is to create a talking character video without using the characters feature
+
+        # Create video for scenario 1
+        video = Video(
+            id="first_short_content_test_00last",
+            title="Rodrigo Outro",
+            description="Outro to weird mother story",
+            style="cinematic",
+            cast=[],  # No characters for this scenario
+            sets=[],
+            shots=[VideoBlock(
+                id="first_short_content_test_00last_shot_00last",
+                storyline_label="First Short Content Test Shot 00last",
+                render_engine=RenderEngine.LIPSYNC_MOTION,  # Use LIPSYNC_MOTION with I2V
+                duration_seconds=5,# Duration is ignored for LIPSYNC_MOTION
+                fps=25,
+                width=720,
+                height=1080,
+                first_keyframe=KeyFrame(
+                    source=KeyframeSource.SUPPLIED,
+                    linked_source_id=None,
+                    width=720,
+                    height=1080,
+                    set=None,
+                    characters=None,
+                    basic_generation_prompt=None,
+                    supplied_image_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/Temp%20Dump/matt-silver--jqTm3EaGus-unsplash.jpg",
+                    rendered_frame_by_vid_gen_url=None
+                ),
+                last_keyframe=None,  # Not needed because render engine is LIPSYNC_MOTION
+                video_prompt=("A man talking passionately"),
+                style="cinematic",
+                narrations=[
+                    Narration(
+                        id="narration_001",
+                        exaggeration=0.5,
+                        cfg_weight=0.5,
+                        script="If your own parent claimed they were the ‘first mom’ to your child, what would you do? Comment below — would you cut contact, or try to make peace?",
+                        voice_sample_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/Temp%20Dump/JoseAudioSample.wav",
+                        audio_url=None,
+                        audio_padded_url=None
+                    )
+                ],
+                overlays=None,
+                bg_audio_effects=None,
+                generated_video_clip_raw=None,
+                generated_video_clip_with_overlays=None,
+                generated_video_clip_with_audio_and_overlays=None,
+                generated_video_clip_final=None,
+                transition=None
+            )],
+            generated_video_url=None,
+            background_music=None
+        )
+
+        processed_video = self.video_generator.process_video(video)
+
+        print(f"Processed video: {processed_video}")
+        return True
+    
+    def first_short_content_test_make_full_video_from_generated_shot_videos(self) -> bool:# This test is to create a talking character video without using the characters feature
+
+        # Create video for scenario 1
+        video = Video(
+            id="first_short_content_test_001",
+            title="Rodrigo Mom Story Full Video",
+            description="Full video from generated shots",
+            style="cinematic",
+            cast=[],  # No characters for this scenario
+            sets=[],
+            shots=[VideoBlock(
+                id="first_short_content_test_001_shot_001",
+                storyline_label="First Short Content Test Shot 001",
+                fps=25,
+                width=720,
+                height=1080,
+                supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/ac7ba161-1abb-41d4-b646-4959e8629500.mp4?",
+                overlays = [
+                    TextOverlay(
+                        text="Listen to this — this woman’s mom says she deserves to be her baby’s ‘first mom’… because she raised her.",
+                        position=TextOverlayPosition.CENTER,
+                        properties=TextOverlayProperties(
+                            font_size=24,
+                            color="#FFFFFF",
+                            background_color="rgba(0,0,0,0.8)",  # Better with transparency
+                            font_family="Arial",  # Add missing font family
+                            padding=10,           # Add missing padding
+                            border_radius=5,      # Add missing border radius
+                            presentation_type=TextPresentationType.PROGRESSIVE_REVEAL,
+                            presentation_animation_type=TextPresentationAnimationType.NONE,  # Correct field name
+                            timing=TextOverlayTiming(
+                                start_time_seconds=0.0,     # Correct field name
+                                end_time_seconds=6.0,       # Correct field name (not duration)
+                                reveal_unit="word",         # Required for progressive reveal
+                                reveal_speed=1.0,           # Optional but good to specify
+                                animation_duration_in=0.5,  # For animations
+                                animation_duration_out=0.5  # For animations
+                            )
+                        )
+                    )
+                ],
+                transition=Transition.CUT
+            ),
+            VideoBlock(
+                id="first_short_content_test_001_shot_002",
+                storyline_label="First Short Content Test Shot 002",
+                fps=25,
+                width=720,
+                height=1080,
+                supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/641c415d-38fc-404c-9f52-cec5ba58a4ac.mp4",
+                overlays = [
+                    TextOverlay(
+                        text="She’s twenty-six, just had her first baby — and her mom’s way too involved.",
+                        position=TextOverlayPosition.CENTER,
+                        properties=TextOverlayProperties(
+                            font_size=24,
+                            color="#C4F4E0",
+                            background_color="rgba(0,0,0,0.8)",  # Better with transparency
+                            font_family="Arial",  # Add missing font family
+                            padding=10,           # Add missing padding
+                            border_radius=5,      # Add missing border radius
+                            presentation_type=TextPresentationType.PROGRESSIVE_REVEAL,
+                            presentation_animation_type=TextPresentationAnimationType.NONE,  # Correct field name
+                            timing=TextOverlayTiming(
+                                start_time_seconds=0.0,     # Correct field name
+                                reveal_unit="word",         # Required for progressive reveal
+                                reveal_speed=1.0,           # Optional but good to specify
+                                animation_duration_in=0.5,  # For animations
+                                animation_duration_out=0.5  # For animations
+                            )
+                        )
+                    )
+                ],
+                transition=Transition.CUT
+            ),
+            VideoBlock(
+                id="first_short_content_test_001_shot_003",
+                storyline_label="First Short Content Test Shot 003",
+                fps=25,
+                width=720,
+                height=1080,
+                supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/0972e2d3-8582-4c4f-8903-4c11083dc7bb.mp4",
+                overlays = [
+                    TextOverlay(
+                        text="At first it was sweet — but lately her mom’s crossing lines",
+                        position=TextOverlayPosition.CENTER,
+                        properties=TextOverlayProperties(
+                            font_size=24,
+                            color="#FFFFFF",
+                            background_color="rgba(0,0,0,0.8)",  # Better with transparency
+                            font_family="Arial",  # Add missing font family
+                            padding=10,           # Add missing padding
+                            border_radius=5,      # Add missing border radius
+                            presentation_type=TextPresentationType.PROGRESSIVE_REVEAL,
+                            presentation_animation_type=TextPresentationAnimationType.NONE,  # Correct field name
+                            timing=TextOverlayTiming(
+                                start_time_seconds=0.0,     # Correct field name
+                                reveal_unit="word",         # Required for progressive reveal
+                                reveal_speed=1.0,           # Optional but good to specify
+                                animation_duration_in=0.5,  # For animations
+                                animation_duration_out=0.5  # For animations
+                            )
+                        )
+                    )
+                ],
+                transition=Transition.CUT
+            ),
+            VideoBlock(
+                id="first_short_content_test_001_shot_004",
+                storyline_label="First Short Content Test Shot 004",
+                fps=25,
+                width=720,
+                height=1080,
+                supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/22743f73-08cf-4023-9a84-d0b5f644cbba.mp4",
+                overlays = [
+                    TextOverlay(
+                        text="She even called the baby ‘our baby’ — and said, ‘I’m the first mom, I raised you.’",
+                        position=TextOverlayPosition.CENTER,
+                        properties=TextOverlayProperties(
+                            font_size=24,
+                            color="#FFFFFF",
+                            background_color="rgba(0,0,0,0.8)",  # Better with transparency
+                            font_family="Arial",  # Add missing font family
+                            padding=10,           # Add missing padding
+                            border_radius=5,      # Add missing border radius
+                            presentation_type=TextPresentationType.PROGRESSIVE_REVEAL,
+                            presentation_animation_type=TextPresentationAnimationType.NONE,  # Correct field name
+                            timing=TextOverlayTiming(
+                                start_time_seconds=0.0,     # Correct field name
+                                reveal_unit="word",         # Required for progressive reveal
+                                reveal_speed=1.0,           # Optional but good to specify
+                                animation_duration_in=0.5,  # For animations
+                                animation_duration_out=0.5  # For animations
+                            )
+                        )
+                    )
+                ],
+                transition=Transition.CUT
+            ),
+            VideoBlock(
+                id="first_short_content_test_001_shot_005",
+                storyline_label="First Short Content Test Shot 005",
+                fps=25,
+                width=720,
+                height=1080,
+                supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/9cc7d4b9-04c5-492b-a2fd-c676c2ba146c.mp4",
+                overlays = [
+                    TextOverlay(
+                        text="Now she critiques everything — feeding, swaddling, even saying the baby likes her more.",
+                        position=TextOverlayPosition.CENTER,
+                        properties=TextOverlayProperties(
+                            font_size=24,
+                            color="#FFFFFF",
+                            background_color="rgba(0,0,0,0.8)",  # Better with transparency
+                            font_family="Arial",  # Add missing font family
+                            padding=10,           # Add missing padding
+                            border_radius=5,      # Add missing border radius
+                            presentation_type=TextPresentationType.PROGRESSIVE_REVEAL,
+                            presentation_animation_type=TextPresentationAnimationType.NONE,  # Correct field name
+                            timing=TextOverlayTiming(
+                                start_time_seconds=0.0,     # Correct field name
+                                reveal_unit="word",         # Required for progressive reveal
+                                reveal_speed=1.0,           # Optional but good to specify
+                                animation_duration_in=0.5,  # For animations
+                                animation_duration_out=0.5  # For animations
+                            )
+                        )
+                    )
+                ],
+                transition=Transition.CUT
+            ),
+            VideoBlock(
+                id="first_short_content_test_001_shot_006",
+                storyline_label="First Short Content Test Shot 006",
+                fps=25,
+                width=720,
+                height=1080,
+                supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/57e57bbc-7bc5-476a-b1e3-f550ace48848.mp4",
+                overlays = [
+                    TextOverlay(
+                        text="When called out, she snapped — said her daughter’s ungrateful and can’t parent alone.",
+                        position=TextOverlayPosition.CENTER,
+                        properties=TextOverlayProperties(
+                            font_size=24,
+                            color="#FFFFFF",
+                            background_color="rgba(0,0,0,0.8)",  # Better with transparency
+                            font_family="Arial",  # Add missing font family
+                            padding=10,           # Add missing padding
+                            border_radius=5,      # Add missing border radius
+                            presentation_type=TextPresentationType.PROGRESSIVE_REVEAL,
+                            presentation_animation_type=TextPresentationAnimationType.NONE,  # Correct field name
+                            timing=TextOverlayTiming(
+                                start_time_seconds=0.0,     # Correct field name
+                                reveal_unit="word",         # Required for progressive reveal
+                                reveal_speed=1.0,           # Optional but good to specify
+                                animation_duration_in=0.5,  # For animations
+                                animation_duration_out=0.5  # For animations
+                            )
+                        )
+                    )
+                ],
+                transition=Transition.CUT
+            ),
+            VideoBlock(
+                id="first_short_content_test_001_shot_007",
+                storyline_label="First Short Content Test Shot 007",
+                fps=25,
+                width=720,
+                height=1080,
+                supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/87e8f332-a291-4318-ba05-9fdbcaec1b51.mp4",
+                overlays = [
+                    TextOverlay(
+                        text="Now she wants a trial run — to take the baby overnight and ‘prove she can do it better.",
+                        position=TextOverlayPosition.CENTER,
+                        properties=TextOverlayProperties(
+                            font_size=24,
+                            color="#FFFFFF",
+                            background_color="rgba(0,0,0,0.8)",  # Better with transparency
+                            font_family="Arial",  # Add missing font family
+                            padding=10,           # Add missing padding
+                            border_radius=5,      # Add missing border radius
+                            presentation_type=TextPresentationType.PROGRESSIVE_REVEAL,
+                            presentation_animation_type=TextPresentationAnimationType.NONE,  # Correct field name
+                            timing=TextOverlayTiming(
+                                start_time_seconds=0.0,     # Correct field name
+                                reveal_unit="word",         # Required for progressive reveal
+                                reveal_speed=1.0,           # Optional but good to specify
+                                animation_duration_in=0.5,  # For animations
+                                animation_duration_out=0.5  # For animations
+                            )
+                        )
+                    )
+                ],
+                transition=Transition.CUT
+            ),
+            VideoBlock(
+                id="first_short_content_test_001_shot_008",
+                storyline_label="First Short Content Test Shot 008",
+                fps=25,
+                width=720,
+                height=1080,
+                supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/a2d5ae01-5428-4ec7-abe5-c6782f13f3ce.mp4",
+                overlays = [
+                    TextOverlay(
+                        text="She says it feels like her mom doesn’t see her as a parent — just an assistant.",
+                        position=TextOverlayPosition.CENTER,
+                        properties=TextOverlayProperties(
+                            font_size=24,
+                            color="#FFFFFF",
+                            background_color="rgba(0,0,0,0.8)",  # Better with transparency
+                            font_family="Arial",  # Add missing font family
+                            padding=10,           # Add missing padding
+                            border_radius=5,      # Add missing border radius
+                            presentation_type=TextPresentationType.PROGRESSIVE_REVEAL,
+                            presentation_animation_type=TextPresentationAnimationType.NONE,  # Correct field name
+                            timing=TextOverlayTiming(
+                                start_time_seconds=0.0,     # Correct field name
+                                reveal_unit="word",         # Required for progressive reveal
+                                reveal_speed=1.0,           # Optional but good to specify
+                                animation_duration_in=0.5,  # For animations
+                                animation_duration_out=0.5  # For animations
+                            )
+                        )
+                    )
+                ],
+                transition=Transition.CUT
+            ),
+            VideoBlock(
+                id="first_short_content_test_001_shot_009",
+                storyline_label="First Short Content Test Shot 009",
+                fps=25,
+                width=720,
+                height=1080,
+                supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/ddcd9272-975a-457e-8ea5-b456c65860af.mp4",
+                overlays = [
+                    TextOverlay(
+                        text="It’s heartbreaking — she loves her mom but feels completely undermined.",
+                        position=TextOverlayPosition.CENTER,
+                        properties=TextOverlayProperties(
+                            font_size=24,
+                            color="#FFFFFF",
+                            background_color="rgba(0,0,0,0.8)",  # Better with transparency
+                            font_family="Arial",  # Add missing font family
+                            padding=10,           # Add missing padding
+                            border_radius=5,      # Add missing border radius
+                            presentation_type=TextPresentationType.PROGRESSIVE_REVEAL,
+                            presentation_animation_type=TextPresentationAnimationType.NONE,  # Correct field name
+                            timing=TextOverlayTiming(
+                                start_time_seconds=0.0,     # Correct field name
+                                reveal_unit="word",         # Required for progressive reveal
+                                reveal_speed=1.0,           # Optional but good to specify
+                                animation_duration_in=0.5,  # For animations
+                                animation_duration_out=0.5  # For animations
+                            )
+                        )
+                    )
+                ],
+                transition=Transition.CUT
+            ),
+            VideoBlock(
+                id="first_short_content_test_001_shot_010",
+                storyline_label="First Short Content Test Shot 010",
+                fps=25,
+                width=720,
+                height=1080,
+                supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/bb22621a-3f46-4213-8d2a-270cdde80001.mp4",
+                overlays = [
+                    TextOverlay(
+                        text="If your own parent claimed they were the ‘first mom’ to your child, what would you do? Comment below — would you cut contact, or try to make peace?",
+                        position=TextOverlayPosition.CENTER,
+                        properties=TextOverlayProperties(
+                            font_size=24,
+                            color="#FFFFFF",
+                            background_color="rgba(0,0,0,0.8)",  # Better with transparency
+                            font_family="Arial",  # Add missing font family
+                            padding=10,           # Add missing padding
+                            border_radius=5,      # Add missing border radius
+                            presentation_type=TextPresentationType.PROGRESSIVE_REVEAL,
+                            presentation_animation_type=TextPresentationAnimationType.NONE,  # Correct field name
+                            timing=TextOverlayTiming(
+                                start_time_seconds=0.0,     # Correct field name
+                                reveal_unit="word",         # Required for progressive reveal
+                                reveal_speed=1.0,           # Optional but good to specify
+                                animation_duration_in=0.5,  # For animations
+                                animation_duration_out=0.5  # For animations
+                            )
+                        )
+                    )
+                ],
+                transition=Transition.CUT
+            ),
+            ],
+            generated_video_url=None,
+            background_music=None
+        )
+
+        processed_video = self.video_generator.process_video(video)
+
+        print(f"Processed video: {processed_video}")
+        return True
+    
     def run_all_tests(self):
         """Run all available tests"""
         print("🚀 Starting Video Generator Tests...")
@@ -546,7 +947,9 @@ class VideoGeneratorTests:
             #("Sim singing", self.test_sim_singing)
             #("Single character supplied image and audio", self.first_short_content_test_shot_001)
             #("First short content test shot 002", self.first_short_content_test_shot_002)
-            ("First short content test generic shots", self.first_short_content_test_generic_shots)
+            #("First short content test generic shots", self.first_short_content_test_generic_shots)
+            #("First short content test shot last", self.first_short_content_test_shot_00last)
+            ("First short content test make full video from generated shot videos", self.first_short_content_test_make_full_video_from_generated_shot_videos)
         ]
         
         passed = 0
