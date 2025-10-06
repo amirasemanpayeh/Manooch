@@ -1,0 +1,100 @@
+{
+  "strategy_id": "mixed_narrative_short.v1",
+  "name": "talk-broll-talk",
+  "description": "Mixed Narrative Short (Talk → B-roll → Talk) Create a tight narrative: a talking-head INTRO hook, 5–7 B-ROLL story clips (each one idea), and a talking-head OUTRO that asks a question and invites comments. Keep the total near 60 seconds.",
+  "version": "1.1",
+  "purpose": "Guide an LLM to generate a shots plan JSON for a short-form story: talking-head intro, fixed-length B-roll clips, talking-head outro.",
+  "timing": {
+    "target_total_seconds": 60,
+    "defaults": {
+      "a_roll_seconds": 6
+    },
+    "bounds": {
+      "a_roll_min": 3,
+      "a_roll_max": 12,
+      "tolerance_total_sec": 3
+    }
+  },
+  "structure_rules": {
+    "order_must_start_at": 0,
+    "order_must_increment_by": 1,
+    "intro": { "required": true, "position": "first", "type": "a_roll" },
+    "b_roll_sequence": { "min": 5, "max": 8, "seconds_exact": 5 },
+    "outro": { "required": true, "position": "last", "type": "a_roll", "merged_lines": true }
+  },
+  "narration_rules": {
+    "assumed_wpm": 125,
+    "intro_words_max": 18,
+    "b_roll_line_words": { "min": 10, "max": 18 },
+    "b_roll_line_chars_max": 120,
+    "outro_words_max": 40,
+    "tone": "conversational, empathetic, engaging, non-judgmental",
+    "perspective": "third_person_host",
+    "person_style": "Use third person (she/her/they). The narrator is NOT the OP.",
+    "style_notes": [
+      "Each B-roll line conveys exactly one idea.",
+      "Prefer active voice and concrete phrasing.",
+      "No hashtags or emojis in narration lines.",
+      "Convert first-person details from source to third person (e.g., 'my mom' → 'her mom').",
+      "If quoting the OP or others, use quotation marks and keep it brief."
+    ]
+  },
+  "clip_rules": {
+    "a_roll_shots_have_no_clip": true,
+    "b_roll_shots_require_clip": true,
+    "b_roll_seconds_exact": 5,
+    "clip_fields_required": ["keyframe_prompt", "motion_prompt"],
+    "keyframe_prompt_style": "Describe a single vertical 9:16 cinematic keyframe: subjects, setting, lighting, mood, composition.",
+    "motion_prompt_style": "Describe short camera/scene motion for exactly 5 seconds (e.g., slow pan, subtle zoom, handheld drift)."
+  },
+  "output_contract": {
+    "must_return_object_with_keys": ["strategy_id", "video_id", "title", "description", "tags", "hook_line", "first_comment_line", "shorts_video_plan"],
+    "shorts_video_plan": {
+      "shots_array_key": "shots",
+      "shot_object_required_keys": ["order", "narration"],
+      "shot_object_optional_keys": ["clip"],
+      "clip_object_required_keys": ["keyframe_prompt", "motion_prompt"]
+    },
+    "a_roll_detection_rule": "A-roll if shot.clip is absent; B-roll if shot.clip is present.",
+    "ordering_rule": "Orders must be contiguous integers starting at 0 in playback order."
+  },
+  "extra_guidance": {
+    "hook_strategy": "Start with an engaging hook that immediately grabs attention. Use phrases like 'Listen to this...', 'You won't believe what happened...', 'This guy/woman...' to create immediate intrigue and pull viewers in from the first second.",
+    "storytelling_flow": "Structure the narrative to build tension and maintain engagement throughout. Each B-roll segment should advance the story while keeping viewers curious about what happens next.",
+    "viewer_retention": "Front-load the most compelling elements in the first 3-5 seconds. The hook should make viewers want to stay and see how the story unfolds."
+  },
+  "dynamic_prompt_template": "Please generate a shots plan JSON for a short-form vertical video using the \\\"Mixed Narrative Short (Talk → B-roll → Talk)\\\" strategy.\\n\\nINPUT SOURCE\\nTitle: {{SOURCE_TITLE}}\\n\\nText:\\n{{SOURCE_TEXT}}\\n\\nGOAL\\nCreate a tight narrative: a talking-head INTRO hook, {{STRUCTURE_RULES.b_roll_sequence.min}}–{{STRUCTURE_RULES.b_roll_sequence.max}} B-ROLL story clips (each one idea), and a talking-head OUTRO that asks a question and invites comments. Keep the total near {{TIMING.target_total_seconds}} seconds.\\n\\nTIMING CONSTRAINTS\\n- Target total duration: {{TIMING.target_total_seconds}} seconds (tolerance: ±{{TIMING.bounds.tolerance_total_sec}}s)\\n- A-roll shots: {{TIMING.defaults.a_roll_seconds}} seconds each (range: {{TIMING.bounds.a_roll_min}}-{{TIMING.bounds.a_roll_max}}s)\\n- B-roll shots: exactly {{STRUCTURE_RULES.b_roll_sequence.seconds_exact}} seconds each\\n\\nSTRUCTURE RULES\\n- Order must start at {{STRUCTURE_RULES.order_must_start_at}} and increment by {{STRUCTURE_RULES.order_must_increment_by}}\\n- INTRO: {{STRUCTURE_RULES.intro.type}} shot, position {{STRUCTURE_RULES.intro.position}}, required: {{STRUCTURE_RULES.intro.required}}\\n- B-ROLL: {{STRUCTURE_RULES.b_roll_sequence.min}}-{{STRUCTURE_RULES.b_roll_sequence.max}} shots, each exactly {{STRUCTURE_RULES.b_roll_sequence.seconds_exact}} seconds\\n- OUTRO: {{STRUCTURE_RULES.outro.type}} shot, position {{STRUCTURE_RULES.outro.position}}, merged_lines: {{STRUCTURE_RULES.outro.merged_lines}}\\n\\nNARRATION RULES\\n- Assumed speaking rate: {{NARRATION_RULES.assumed_wpm}} words per minute\\n- Intro max words: {{NARRATION_RULES.intro_words_max}}\\n- B-roll line words: {{NARRATION_RULES.b_roll_line_words.min}}-{{NARRATION_RULES.b_roll_line_words.max}} words, max {{NARRATION_RULES.b_roll_line_chars_max}} chars\\n- Outro max words: {{NARRATION_RULES.outro_words_max}}\\n- Tone: {{NARRATION_RULES.tone}}\\n- Perspective: {{NARRATION_RULES.perspective}}\\n- Person style: {{NARRATION_RULES.person_style}}\\n- Style notes: {{NARRATION_RULES.style_notes}}\\n\\nCLIP RULES\\n- A-roll shots have no clip: {{CLIP_RULES.a_roll_shots_have_no_clip}}\\n- B-roll shots require clip: {{CLIP_RULES.b_roll_shots_require_clip}}\\n- B-roll duration: exactly {{CLIP_RULES.b_roll_seconds_exact}} seconds\\n- Required clip fields: {{CLIP_RULES.clip_fields_required}}\\n- Keyframe style: {{CLIP_RULES.keyframe_prompt_style}}\\n- Motion style: {{CLIP_RULES.motion_prompt_style}}\\n\\nSTRICT OUTPUT RULES\\n1) Output VALID JSON only — no code fences, markdown, comments, explanations, placeholders, or ellipses.\\n2) Shots live under shorts_video_plan.shots as an ordered list.\\n3) Each shot object MUST have: { \\\"order\\\": int, \\\"narration\\\": str }.\\n4) A-roll (talking head) shots have NO \\\"clip\\\".\\n5) B-roll shots MUST include \\\"clip\\\": { \\\"keyframe_prompt\\\": str, \\\"motion_prompt\\\": str }.\\n6) Order starts at {{STRUCTURE_RULES.order_must_start_at}} and increments by {{STRUCTURE_RULES.order_must_increment_by}} with no gaps.\\n7) INTRO is the first shot (A-roll). Its narration MUST EXACTLY EQUAL \\\"hook_line\\\".\\n8) Then {{STRUCTURE_RULES.b_roll_sequence.min}}–{{STRUCTURE_RULES.b_roll_sequence.max}} B-roll shots. Each B-roll is exactly {{STRUCTURE_RULES.b_roll_sequence.seconds_exact}} seconds.\\n9) OUTRO is a single merged A-roll shot at the end (question + CTA in one narration line, ≤ {{NARRATION_RULES.outro_words_max}} words).\\n10) Keep narration {{NARRATION_RULES.tone}}; avoid emojis/hashtags.\\n11) JSON must not contain trailing commas.\\n12) Do not include null, blank, or placeholder values (\\\"<…>\\\").\\n13) JSON keys must follow the same structure and order as shown in the \\\"OUTPUT JSON SHAPE\\\" section.\\n14) All narration must be in third person from a neutral host/storyteller. Never write from the OP's \\\"I/me/my\\\" perspective.\\n15) If quoting the OP or others, use quotation marks and keep it brief (e.g., \\\"She said, 'I'm the first mom.'\\\").\\n16) Convert first-person details in the source to third person (e.g., \\\"my mom\\\" → \\\"her mom\\\").\\n\\nEXTRA GUIDANCE\\n{{EXTRA_GUIDANCE.hook_strategy}}\\n{{EXTRA_GUIDANCE.storytelling_flow}}\\n{{EXTRA_GUIDANCE.viewer_retention}}\\n\\nOUTPUT JSON SHAPE (no comments; fill every field concretely)\\n{\\n  \\\"strategy_id\\\": \\\"mixed_narrative_short.v1\\\",\\n  \\\"video_id\\\": \\\"<string>\\\",\\n  \\\"title\\\": \\\"<string (≤ 80 chars)>\\\",\\n  \\\"description\\\": [\\\"<string>\\\", \\\"<string>\\\", \\\"<string>\\\"],\\n  \\\"tags\\\": [\\\"<lowercase>\\\", \\\"<lowercase>\\\", \\\"<lowercase>\\\"],\\n  \\\"hook_line\\\": \\\"<string (≤ {{NARRATION_RULES.intro_words_max}} words)>\\\",\\n  \\\"first_comment_line\\\": \\\"<string (≤ 25 words)>\\\",\\n  \\\"shorts_video_plan\\\": {\\n    \\\"shots\\\": [\\n      { \\\"order\\\": 0, \\\"narration\\\": \\\"<MUST MATCH hook_line>\\\" },\\n      { \\\"order\\\": 1, \\\"narration\\\": \\\"<B-roll line>\\\", \\\"clip\\\": { \\\"keyframe_prompt\\\": \\\"<...>\\\", \\\"motion_prompt\\\": \\\"<...>\\\" } },\\n      { \\\"order\\\": 2, \\\"narration\\\": \\\"<B-roll line>\\\", \\\"clip\\\": { \\\"keyframe_prompt\\\": \\\"<...>\\\", \\\"motion_prompt\\\": \\\"<...>\\\" } },\\n      { \\\"order\\\": N, \\\"narration\\\": \\\"<OUTRO merged question + CTA, ≤ {{NARRATION_RULES.outro_words_max}} words>\\\" }\\n    ]\\n  }\\n}\\n\\nBegin now. Return JSON only.",
+  "placeholders": {
+    "TIMING.target_total_seconds": 55,
+    "NARRATION_RULES.intro_words_max": 18,
+    "NARRATION_RULES.outro_words_max": 40,
+    "STRUCTURE_RULES.b_roll_sequence.min": 5,
+    "STRUCTURE_RULES.b_roll_sequence.max": 8,
+    "STRUCTURE_RULES.b_roll_sequence.seconds_exact": 5,
+    "STRUCTURE_RULES.order_must_start_at": 0,
+    "STRUCTURE_RULES.order_must_increment_by": 1,
+    "STRUCTURE_RULES.intro.type": "a_roll",
+    "STRUCTURE_RULES.intro.position": "first",
+    "STRUCTURE_RULES.intro.required": true,
+    "STRUCTURE_RULES.outro.type": "a_roll",
+    "STRUCTURE_RULES.outro.position": "last",
+    "STRUCTURE_RULES.outro.merged_lines": true,
+    "TIMING.bounds.tolerance_total_sec": 1,
+    "TIMING.defaults.a_roll_seconds": 5,
+    "TIMING.bounds.a_roll_min": 3,
+    "TIMING.bounds.a_roll_max": 12,
+    "NARRATION_RULES.assumed_wpm": 125,
+    "NARRATION_RULES.b_roll_line_words.min": 10,
+    "NARRATION_RULES.b_roll_line_words.max": 18,
+    "NARRATION_RULES.b_roll_line_chars_max": 120,
+    "NARRATION_RULES.tone": "conversational, empathetic, engaging, non-judgmental",
+    "NARRATION_RULES.perspective": "third_person_host",
+    "NARRATION_RULES.person_style": "Use third person (she/her/they). The narrator is NOT the OP.",
+    "CLIP_RULES.a_roll_shots_have_no_clip": true,
+    "CLIP_RULES.b_roll_shots_require_clip": true,
+    "CLIP_RULES.b_roll_seconds_exact": 5,
+    "EXTRA_GUIDANCE.hook_strategy": "Start with an engaging hook that immediately grabs attention. Use phrases like 'Listen to this...', 'You won't believe what happened...', 'This guy/woman...' to create immediate intrigue and pull viewers in from the first second.",
+    "EXTRA_GUIDANCE.storytelling_flow": "Structure the narrative to build tension and maintain engagement throughout. Each B-roll segment should advance the story while keeping viewers curious about what happens next.",
+    "EXTRA_GUIDANCE.viewer_retention": "Front-load the most compelling elements in the first 3-5 seconds. The hook should make viewers want to stay and see how the story unfolds."
+  }
+}

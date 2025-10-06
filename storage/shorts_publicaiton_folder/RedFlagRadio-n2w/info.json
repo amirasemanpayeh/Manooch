@@ -1,0 +1,73 @@
+{
+  "channel_id": "RedFlagRadio-n2w",
+  "channel_name": "RedFlag Radio",
+  "channel_email": "redflagradio@gmail.com",
+  "brand_color": "#FF3B3B",
+  "platforms": {
+    "youtube": {
+      "channel_url": "https://www.youtube.com/@RedFlagRadio",
+      "upload_strategy": {
+        "timezone": "Europe/London",
+        "posts_per_day": 2,
+        "preferred_times": ["12:00", "20:00"],
+        "tags": ["storytime", "reddit", "aita", "relationships", "family", "drama"]
+      },
+      "default_visibility": "public",
+      "monetization_status": "not_eligible_yet",
+      "playlist_strategy": {
+        "enabled": true,
+        "playlists": [
+          {
+            "name": "Family & Parenting Dilemmas",
+            "description": "True stories about parents crossing lines and family red flags."
+          },
+          {
+            "name": "Relationship Red Flags",
+            "description": "Toxic love stories and the messy truth behind them."
+          }
+        ]
+      },
+      "thumbnail_style": {
+        "aspect_ratio": "9:16",
+        "font_primary": "Bebas Neue",
+        "font_fallback_mac": "Impact",
+        "font_color": "#FFFFFF",
+        "outline_color": "#000000",
+        "text_shadow": true,
+        "text_style": "bold_uppercase"
+      },
+      "content_type": "shorts"
+    },
+    "tiktok": {
+      "enabled": true,
+      "handle": "@redflagradio",
+      "upload_strategy": {
+        "crosspost_from_youtube": true,
+        "add_auto_captions": true
+      }
+    },
+    "instagram": {
+      "enabled": false
+    }
+  },
+  "creator": {
+    "name": "Amir Aseman",
+    "role": "Channel Owner & Editor",
+    "tools": ["Python", "Qwen", "Wan2.2", "Chatterbox TTS", "ComfyUI"],
+    "location": "United Kingdom"
+  },
+  "assets": {
+    "voice_sample": "https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/Temp%20Dump/JoseAudioSample.wav",
+    "default_background_music": null,
+    "default_thumbnail_template": "/shorts_publication_folder/RedFlagRadio-n2w/assets/thumbnail_template.png"
+  },
+  "metadata": {
+    "date_created": "2025-10-06",
+    "last_updated": "2025-10-06",
+    "channel_purpose": "Short-form storytelling of real Reddit posts narrated and visualized with AI-generated media.",
+    "language": "English",
+    "region": "GB",
+    "audience": "Adults (16+)",
+    "content_rating": "PG-13"
+  }
+}

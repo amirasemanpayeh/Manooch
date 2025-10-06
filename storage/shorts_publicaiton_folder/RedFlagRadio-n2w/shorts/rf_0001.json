@@ -1,0 +1,86 @@
+{
+  "strategy_id": "redflagradio.story.v1",
+  "video_id": "rf_001",
+  "title": "She Said She’s My Baby’s Real Mom 😳 | RedFlag Radio",
+  "description": [
+    "A new mom shares how her own mother started calling herself the baby’s “first mom”… because she “raised” her.",
+    "From overstepping boundaries to demanding an overnight “trial run,” this story hits a whole new level of family drama.",
+    "What would YOU do if your parent tried to take over like this? 👇",
+    "—",
+    "🎙️ Welcome to RedFlag Radio — where we unpack real Reddit stories and moral dilemmas.",
+    "💬 Comment below: Would you cut contact or try to make peace?",
+    "🚩 Subscribe for more short stories about relationships, boundaries, and life’s biggest “what would you do?” moments."
+  ],
+  "tags": ["storytime", "reddit", "aita", "relationships", "family", "drama"],
+  "hook_line": "Listen to this — this woman’s mom says she deserves to be the baby’s real mom.",
+  "first_comment_line": "This story is wild — a new mom’s own mother is overstepping big time.",
+
+  "shorts_video_plan": {
+    "shots": [
+      { "order": 0, "narration": "Listen to this — this woman’s mom says she deserves to be the baby’s real mom." },
+
+      {
+        "order": 1,
+        "narration": "She’s twenty-six, just had her first baby — and her mom’s way too involved.",
+        "clip": {
+          "keyframe_prompt": "Young woman holding newborn; older mother hovering; cozy home; natural light; cinematic.",
+          "motion_prompt": "Slow pan around both women with baby; warm lighting; hint of tension."
+        }
+      },
+      {
+        "order": 2,
+        "narration": "At first it was sweet — but lately her mom’s crossing lines.",
+        "clip": {
+          "keyframe_prompt": "Older woman leaning over crib; young mother uneasy; subtle tension; warm light.",
+          "motion_prompt": "Slow zoom on hover over baby; younger mom uncomfortable; handheld feel."
+        }
+      },
+      {
+        "order": 3,
+        "narration": "She even called the baby ‘our baby’ — and said, ‘I’m the first mom, I raised you.’",
+        "clip": {
+          "keyframe_prompt": "Older woman introducing baby to friend; young mother surprised; emotional contrast.",
+          "motion_prompt": "Short motion of cheerful chat while young mother reacts with shock; soft camera drift."
+        }
+      },
+      {
+        "order": 4,
+        "narration": "Now she critiques everything — feeding, swaddling, even saying the baby likes her more.",
+        "clip": {
+          "keyframe_prompt": "Older mother correcting feeding; kitchen; visible frustration.",
+          "motion_prompt": "Camera moves between the two; demo vs hurt reaction; realistic gestures."
+        }
+      },
+      {
+        "order": 5,
+        "narration": "When called out, she snapped — said her daughter’s ungrateful and can’t parent alone.",
+        "clip": {
+          "keyframe_prompt": "Argument in living room; baby toys in background; emotional scene.",
+          "motion_prompt": "Quiet but intense argument; handheld; dramatic domestic feel."
+        }
+      },
+      {
+        "order": 6,
+        "narration": "Now she wants a trial run — to take the baby overnight and ‘prove she can do it better.’",
+        "clip": {
+          "keyframe_prompt": "Grandmother with baby’s overnight bag by the door; young mom conflicted; night lighting.",
+          "motion_prompt": "Focus on bag and door; mom uncertain; dim cinematic tone."
+        }
+      },
+      {
+        "order": 7,
+        "narration": "She feels her mom doesn’t see her as a parent — just an assistant.",
+        "clip": {
+          "keyframe_prompt": "Young mother on couch holding baby protectively; soft light; reflective mood.",
+          "motion_prompt": "Slow drift around mother hugging baby; emotional lighting; calm movement."
+        }
+      },
+
+      {
+        "order": 8,
+        "narration": "If your own parent claimed they were the ‘first mom’ to your child, what would you do? Comment below — would you cut contact, or try to make peace?"
+      }
+    ]
+  },
+  "video_url": null
+}
