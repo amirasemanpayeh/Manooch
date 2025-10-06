@@ -40,12 +40,12 @@ class VideoGeneratorTests:
                 duration_seconds=5,# Duration is ignored for LIPSYNC_MOTION
                 fps=25,
                 width=720,
-                height=1080,
+                height=1280,
                 first_keyframe=KeyFrame(
                     source=KeyframeSource.SUPPLIED,
                     linked_source_id=None,
                     width=720,
-                    height=1080,
+                    height=1280,
                     set=None,
                     characters=None,
                     basic_generation_prompt=None,
@@ -58,7 +58,7 @@ class VideoGeneratorTests:
                     source=KeyframeSource.NOT_USED,  # This tells the engine to use I2V instead of FLF2V
                     linked_source_id=None,
                     width=720,
-                    height=1080,
+                    height=1280,
                     set=None,
                     characters=None,
                     basic_generation_prompt=None,
@@ -334,16 +334,16 @@ class VideoGeneratorTests:
                 duration_seconds=5,# Duration is ignored for LIPSYNC_MOTION
                 fps=25,
                 width=720,
-                height=1080,
+                height=1280,
                 first_keyframe=KeyFrame(
-                    source=KeyframeSource.GENERATE,
+                    source=KeyframeSource.SUPPLIED,
                     linked_source_id=None,
                     width=720,
-                    height=1080,
+                    height=1280,
                     set=None,
                     characters=None,
-                    basic_generation_prompt="Edit this image and make the man sit behind a desk in the same environment, same distance from the camera, cinematic lighting, high quality, photorealistic, detailed, 4k",
-                    supplied_image_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/Temp%20Dump/matt-silver--jqTm3EaGus-unsplash.jpg",
+                    basic_generation_prompt = None, # "Edit this image and make the man sit behind a desk in the same environment, same distance from the camera, cinematic lighting, high quality, photorealistic, detailed, 4k",
+                    supplied_image_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/Temp%20Dump/tempImageq4QLM2.png",
                     rendered_frame_by_vid_gen_url=None
                 ),
                 last_keyframe=None,  # Not needed because render engine is LIPSYNC_MOTION
@@ -394,12 +394,12 @@ class VideoGeneratorTests:
                 duration_seconds=5,# Duration is ignored for LIPSYNC_MOTION
                 fps=25,
                 width=720,
-                height=1080,
+                height=1280,
                 first_keyframe=KeyFrame(
                     source=KeyframeSource.GENERATE,
                     linked_source_id=None,
                     width=720,
-                    height=1080,
+                    height=1280,
                     set=None,
                     characters=None,
                     basic_generation_prompt="Young woman holding newborn while her older mother hovers nearby helping, cozy home, natural daylight, cinematic tone.",
@@ -454,12 +454,12 @@ class VideoGeneratorTests:
                 duration_seconds=5,# Duration is ignored for LIPSYNC_MOTION
                 fps=25,
                 width=720,
-                height=1080,
+                height=1280,
                 first_keyframe=KeyFrame(
                     source=KeyframeSource.GENERATE,
                     linked_source_id=None,
                     width=720,
-                    height=1080,
+                    height=1280,
                     set=None,
                     characters=None,
                     basic_generation_prompt=first_image_prompt,
@@ -553,16 +553,16 @@ class VideoGeneratorTests:
                 duration_seconds=5,# Duration is ignored for LIPSYNC_MOTION
                 fps=25,
                 width=720,
-                height=1080,
+                height=1280,
                 first_keyframe=KeyFrame(
                     source=KeyframeSource.SUPPLIED,
                     linked_source_id=None,
                     width=720,
-                    height=1080,
+                    height=1280,
                     set=None,
                     characters=None,
                     basic_generation_prompt=None,
-                    supplied_image_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/Temp%20Dump/matt-silver--jqTm3EaGus-unsplash.jpg",
+                    supplied_image_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/Temp%20Dump/tempImageq4QLM2.png",
                     rendered_frame_by_vid_gen_url=None
                 ),
                 last_keyframe=None,  # Not needed because render engine is LIPSYNC_MOTION
@@ -573,7 +573,7 @@ class VideoGeneratorTests:
                         id="narration_001",
                         exaggeration=0.5,
                         cfg_weight=0.5,
-                        script="If your own parent claimed they were the ‘first mom’ to your child, what would you do? Comment below — would you cut contact, or try to make peace?",
+                        script="If your own parent claimed they were the ‘first mom’ to your child, what would you do? - Comment below, would you cut contact, or try to make peace?",
                         voice_sample_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/Temp%20Dump/JoseAudioSample.wav",
                         audio_url=None,
                         audio_padded_url=None
@@ -611,11 +611,11 @@ class VideoGeneratorTests:
                 storyline_label="First Short Content Test Shot 001",
                 fps=25,
                 width=720,
-                height=1080,
-                supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/ac7ba161-1abb-41d4-b646-4959e8629500.mp4?",
+                height=1280,
+                supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/Temp%20Dump/intro_video_test.mp4",
                 overlays = [
                     TextOverlay(
-                        text="Listen to this — this woman’s mom says she deserves to be her baby’s ‘first mom’… because she raised her.",
+                        text="Listen to this. This woman’s mom says she deserves to be her baby’s ‘first mom’, because she raised her.",
                         position=TextOverlayPosition.CENTER,
                         properties=TextOverlayProperties(
                             font_size=42,
@@ -646,7 +646,7 @@ class VideoGeneratorTests:
                 storyline_label="First Short Content Test Shot 002",
                 fps=25,
                 width=720,
-                height=1080,
+                height=1280,
                 supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/641c415d-38fc-404c-9f52-cec5ba58a4ac.mp4",
                 overlays = [
                     TextOverlay(
@@ -681,7 +681,7 @@ class VideoGeneratorTests:
                 storyline_label="First Short Content Test Shot 003",
                 fps=25,
                 width=720,
-                height=1080,
+                height=1280,
                 supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/0972e2d3-8582-4c4f-8903-4c11083dc7bb.mp4",
                 overlays = [
                     TextOverlay(
@@ -716,7 +716,7 @@ class VideoGeneratorTests:
                 storyline_label="First Short Content Test Shot 004",
                 fps=25,
                 width=720,
-                height=1080,
+                height=1280,
                 supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/22743f73-08cf-4023-9a84-d0b5f644cbba.mp4",
                 overlays = [
                     TextOverlay(
@@ -751,7 +751,7 @@ class VideoGeneratorTests:
                 storyline_label="First Short Content Test Shot 005",
                 fps=25,
                 width=720,
-                height=1080,
+                height=1280,
                 supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/9cc7d4b9-04c5-492b-a2fd-c676c2ba146c.mp4",
                 overlays = [
                     TextOverlay(
@@ -786,7 +786,7 @@ class VideoGeneratorTests:
                 storyline_label="First Short Content Test Shot 006",
                 fps=25,
                 width=720,
-                height=1080,
+                height=1280,
                 supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/57e57bbc-7bc5-476a-b1e3-f550ace48848.mp4",
                 overlays = [
                     TextOverlay(
@@ -821,7 +821,7 @@ class VideoGeneratorTests:
                 storyline_label="First Short Content Test Shot 007",
                 fps=25,
                 width=720,
-                height=1080,
+                height=1280,
                 supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/87e8f332-a291-4318-ba05-9fdbcaec1b51.mp4",
                 overlays = [
                     TextOverlay(
@@ -856,7 +856,7 @@ class VideoGeneratorTests:
                 storyline_label="First Short Content Test Shot 008",
                 fps=25,
                 width=720,
-                height=1080,
+                height=1280,
                 supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/a2d5ae01-5428-4ec7-abe5-c6782f13f3ce.mp4",
                 overlays = [
                     TextOverlay(
@@ -891,7 +891,7 @@ class VideoGeneratorTests:
                 storyline_label="First Short Content Test Shot 009",
                 fps=25,
                 width=720,
-                height=1080,
+                height=1280,
                 supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/ddcd9272-975a-457e-8ea5-b456c65860af.mp4",
                 overlays = [
                     TextOverlay(
@@ -926,8 +926,8 @@ class VideoGeneratorTests:
                 storyline_label="First Short Content Test Shot 010",
                 fps=25,
                 width=720,
-                height=1080,
-                supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/bb22621a-3f46-4213-8d2a-270cdde80001.mp4",
+                height=1280,
+                supplied_video_with_audio_url="https://lmegqlleznqzhwxeyzdh.supabase.co/storage/v1/object/public/generated_videos/1f62c733-3974-4ac3-9054-81d3e479c108.mp4?",
                 overlays = [
                     TextOverlay(
                         text="If your own parent claimed they were the ‘first mom’ to your child, what would you do? Comment below. Would you cut contact, or try to make peace?",
@@ -974,11 +974,11 @@ class VideoGeneratorTests:
             #("Audio effect + speech video layering", self.test_simple_talking_character_with_bg_audio_effects)
             #("Two characters conversation with background audio effects", self.test_simple_two_characters_conversation_with_bg_effects)
             #("Sim singing", self.test_sim_singing)
-            ("Single character supplied image and audio", self.first_short_content_test_shot_001)
+            #("Single character supplied image and audio", self.first_short_content_test_shot_001),
             #("First short content test shot 002", self.first_short_content_test_shot_002)
             #("First short content test generic shots", self.first_short_content_test_generic_shots)
             #("First short content test shot last", self.first_short_content_test_shot_00last)
-            #("First short content test make full video from generated shot videos", self.first_short_content_test_make_full_video_from_generated_shot_videos)
+            ("First short content test make full video from generated shot videos", self.first_short_content_test_make_full_video_from_generated_shot_videos)
         ]
         
         passed = 0
