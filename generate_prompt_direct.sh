@@ -15,7 +15,7 @@ fi
 source $VENV_DIR/bin/activate
 
 # Hardcoded file paths
-STORY_PATH="storage/shorts_publicaiton_folder/RedFlagRadio-n2w/shorts/rf_source_story.json"
+STORY_PATH="storage/shorts_publicaiton_folder/RedFlagRadio-n2w/shorts/rf_source_story_0002.json"
 STRATEGY_PATH="storage/shorts_publicaiton_folder/RedFlagRadio-n2w/strategy.json"
 
 # Check if files exist

@@ -1,0 +1,81 @@
+{
+  "strategy_id": "mixed_narrative_short.v1",
+  "video_id": "family_child_services_betrayal_case_v5",
+  "title": "This Girl’s Sister Called Child Services on Her Family",
+  "description": [
+    "This girl’s sister accused her family to Child Services after a tense Christmas Eve.",
+    "The case was closed, but the emotional fallout remains.",
+    "She now wrestles with confronting a sister she once trusted."
+  ],
+  "tags": ["family", "betrayal", "sister"],
+  "hook_line": "This girl’s sister called Child Services on her family right after Christmas Eve, and you won’t believe why.",
+  "first_comment_line": "Would you ever forgive a sister for doing something like this?",
+  "shorts_video_plan": {
+    "shots": [
+      {
+        "order": 0,
+        "narration": "This woman's sister called Child Services on her family right after Christmas Eve, and you won’t believe why."
+      },
+      {
+        "order": 1,
+        "narration": "Every Christmas Eve she and her sister set up Santa gifts together in the living room.",
+        "clip": {
+          "keyframe_prompt": "vertical cinematic frame: two adult white women in their early 30s, both with blonde hair, one wearing a red sweater (main woman) and the other in a green cardigan (sister). They are kneeling near a Christmas tree placing wrapped gifts together. Cozy living room with fairy lights, wooden floor, fireplace in background, warm soft golden lighting, natural smiles.",
+          "motion_prompt": "slow cinematic dolly push-in toward the woman in red as she sets down a present; subtle handheld breathing motion to add realism, cinematic tone"
+        }
+      },
+      {
+        "order": 2,
+        "narration": "That night the woman's teenage son told his younger sister that Santa wasn’t real.",
+        "clip": {
+          "keyframe_prompt": "vertical frame: teenage boy (around 13, light brown hair, casual hoodie) leaning toward his younger sister (8 years old, blonde hair in ponytail, red pajamas). The boy is talking to the girl. Christmas tree blurred in background with warm bokeh lights. Scene shows playful but tense energy.",
+          "motion_prompt": "slight side pan revealing both faces, with a slow zoom-in on the girl’s surprised expression, smooth cinematic focus transition, style"
+        }
+      },
+      {
+        "order": 3,
+        "narration": "This caused a big argument and her son flipped out, slamming doors and storming off.",
+        "clip": {
+          "keyframe_prompt": "vertical cinematic shot: teenage boy (13, light brown hair) standing near a doorway mid-motion, angry face, blurred motion on hands. In background, 30-year-old blonde woman (mother) and man in his 30s (father) with short brown hair standing near the couch looking shocked. Christmas decorations visible, tension captured with warm indoor lighting and realistic shadows.",
+          "motion_prompt": "camera pans from the upset boy to the worried parents, slow handheld motion to reflect emotional tension, cinematic realism"
+        }
+      },
+      {
+        "order": 4,
+        "narration": "Days later a Child Services worker walked into his school classroom to interview him about treatment at home.",
+        "clip": {
+          "keyframe_prompt": "vertical shot: school classroom setting with desks and soft daylight from windows. A teenage boy (13, light brown hair) sits at his desk looking nervous. A woman in her 40s with short dark hair, formal jacket, and clipboard stands nearby speaking calmly. Chalkboard and backpacks visible in background, neutral tones, natural light realism.",
+          "motion_prompt": "slow dolly-in from classroom doorway toward the pair, mild camera shake for realism, five-second cinematic shot in style"
+        }
+      },
+      {
+        "order": 5,
+        "narration": "When Child Services visited their home, they saw full shelves, a stocked fridge, calm parents — nothing matched the accusation.",
+        "clip": {
+          "keyframe_prompt": "vertical domestic scene: bright family kitchen with daylight through window. A blonde 30-year-old woman (mother) in casual clothes and her husband (early 30s, brown hair, beard) stand near an open fridge full of food. Female Child Services worker (40s with short dark hair, formal jacket, and clipboard) Looking at the fridge and taking notes. Realistic home textures, tidy environment.",
+          "motion_prompt": "smooth crane up showing kitchen from waist level to overhead, then gentle right pan revealing family and fridge, realistic handheld camera flow"
+        }
+      },
+      {
+        "order": 6,
+        "narration": "Later her family pieced together that the sister likely made the report after witnessing that dispute.",
+        "clip": {
+          "keyframe_prompt": "vertical composition: blonde 30-year-old woman seated on couch holding her phone, looking at unread messages. Behind her in soft blur, doorway shows faint silhouette of her sister (another blonde woman, same age, wearing a green cardigan) standing half-hidden. Warm evening lamp lighting, tense and reflective mood, cinematic color contrast.",
+          "motion_prompt": "subtle focus pull from phone screen to sister’s silhouette, then slow zoom-in on woman’s face as realization dawns, cinematic shot"
+        }
+      },
+      {
+        "order": 7,
+        "narration": "Now the case is closed, but this girl feels betrayed, hurt, and uncertain how to face her sister.",
+        "clip": {
+          "keyframe_prompt": "vertical cinematic shot: blonde 30-year-old woman standing by window in soft dusk light, her reflection faintly visible on glass. She holds her phone loosely in one hand, wearing a red sweater. Background dimly lit living room with subtle bokeh lights, mood somber and introspective.",
+          "motion_prompt": "slow upward tilt and push-out through window reflection, emphasizing isolation and reflection, five-second cinematic realism"
+        }
+      },
+      {
+        "order": 8,
+        "narration": "If your sister did this, would you confront her or walk away? Tell us what you’d do in comments."
+      }
+    ]
+  }
+}

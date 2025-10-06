@@ -83,6 +83,48 @@ def run_prompt_generation():
         print(f"❌ Error generating prompt: {e}")
 
 
+def run_video_generation():
+    """
+    Generate video from plan file functionality
+    """
+    from logic.shorts_strategy_manager import StrategyManager
+    
+    print("🎥 Generate Video from Plan File")
+    print()
+    
+    # Get file path from user
+    plan_path = input("Enter path to plan JSON file: ").strip()
+    if not plan_path:
+        print("❌ Plan file path is required")
+        return
+    
+    # Validate file exists
+    import os
+    if not os.path.exists(plan_path):
+        print(f"❌ Plan file not found: {plan_path}")
+        return
+    
+    try:
+        print("🚀 Generating video from plan...")
+        manager = StrategyManager()
+        plan = manager.generate_video_from_plan_file(plan_path)
+        
+        print()
+        print("=" * 80)
+        print("VIDEO GENERATION COMPLETED")
+        print("=" * 80)
+        print(f"Total shots processed: {len(plan.shots)}")
+        print(f"Shots ordered: {[shot.order for shot in plan.ordered()]}")
+        if plan.video_url:
+            print(f"Video URL: {plan.video_url}")
+        print("=" * 80)
+        print()
+        print("✅ Video generated successfully!")
+        
+    except Exception as e:
+        print(f"❌ Error generating video: {e}")
+
+
 def display_menu():
     """
     Display the main menu options
@@ -92,7 +134,8 @@ def display_menu():
     print("=" * 50)
     print("1. Reddit Scraping")
     print("2. Generate Prompt from Story File")
-    print("3. Exit")
+    print("3. Generate Video from Plan File")
+    print("4. Exit")
     print("=" * 50)
 
 
@@ -104,17 +147,19 @@ def main() -> None:
         display_menu()
         
         try:
-            choice = input("Select an option (1-3): ").strip()
+            choice = input("Select an option (1-4): ").strip()
             
             if choice == "1":
                 run_reddit_scraping()
             elif choice == "2":
                 run_prompt_generation()
             elif choice == "3":
+                run_video_generation()
+            elif choice == "4":
                 print("👋 Goodbye!")
                 break
             else:
-                print("❌ Invalid choice. Please select 1, 2, or 3.")
+                print("❌ Invalid choice. Please select 1, 2, 3, or 4.")
                 
         except KeyboardInterrupt:
             print("\n👋 Goodbye!")
@@ -123,7 +168,7 @@ def main() -> None:
             print(f"❌ An error occurred: {e}")
         
         # Ask if user wants to continue
-        if choice in ["1", "2"]:
+        if choice in ["1", "2", "3"]:
             print()
             continue_choice = input("Press Enter to return to menu or 'q' to quit: ").strip().lower()
             if continue_choice == 'q':
